@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+dist/
+.vendor/
+.DS_Store
+AGENTS.md
+CLAUDE.md
