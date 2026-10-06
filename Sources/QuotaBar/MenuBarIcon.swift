@@ -16,12 +16,13 @@ enum MenuBarIcon {
             .foregroundColor: NSColor.black,
         ]
         let labels = providers.map { NSAttributedString(string: values[$0] ?? "--", attributes: attributes) }
-        let width = labels.reduce(CGFloat(0)) { $0 + 23 + ceil($1.size().width) } + 12
+        let width = labels.reduce(CGFloat(0)) { $0 + 20 + ceil($1.size().width) } + 12
         let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
             var x: CGFloat = 0
             for (index, provider) in providers.enumerated() {
-                Brand.image(provider).draw(in: NSRect(x: x, y: 1, width: 20, height: 20))
-                x += 23
+                // The official logos fill their whole box: 16 pt matches other menu-bar icons.
+                Brand.image(provider).draw(in: NSRect(x: x, y: 3, width: 16, height: 16))
+                x += 20
                 let label = labels[index]
                 label.draw(at: NSPoint(x: x, y: (22 - label.size().height) / 2))
                 x += ceil(label.size().width) + 12
