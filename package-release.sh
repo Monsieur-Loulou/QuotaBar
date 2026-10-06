@@ -4,7 +4,6 @@ cd "$(dirname "$0")"
 task_app="$PWD/dist/QuotaBar.app"
 task_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$task_app/Contents/Info.plist")
 lipo "$task_app/Contents/MacOS/QuotaBar" -verify_arch arm64 x86_64
-lipo "$task_app/Contents/Helpers/CodexBarCLI" -verify_arch arm64 x86_64
 codesign --verify --deep --strict "$task_app"
 "$task_app/Contents/MacOS/QuotaBar" --verify-resources
 task_release_dir="$PWD/dist/release-$task_version"
@@ -25,9 +24,8 @@ QuotaBar pour macOS 14 ou plus récent, Mac Intel et Apple Silicon.
 2. Ouvre QuotaBar depuis Applications.
 3. Clique sur Vérifier les connexions au premier lancement.
 
-La connexion Codex doit être présente sur ce Mac et Claude connecté sur
-claude.ai dans un navigateur compatible. Le lecteur est inclus ; aucune
-compilation ni installation de CodexBar n'est nécessaire.
+Codex (inclus dans l'app ChatGPT) et Claude Code doivent être connectés
+sur ce Mac. QuotaBar lit leurs quotas avec ces connexions, sans clé API.
 
 Ce paquet n'est pas notarisé par Apple. macOS peut bloquer son ouverture
 après téléchargement. Consulte l’aide officielle Apple avant de décider

@@ -94,7 +94,7 @@ struct Panel: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Tes quotas, avec les comptes que tu utilises déjà.")
                 .font(.system(size: 12, weight: .medium))
-            Text("QuotaBar utilise la connexion Codex de ce Mac et la session claude.ai de ton navigateur. Aucune clé API à saisir.")
+            Text("QuotaBar utilise les connexions de Codex et de Claude Code sur ce Mac. Aucune clé API à saisir.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             ForEach(Provider.allCases, id: \.self) { provider in
                 let ink = Brand.ink(provider, dark: colorScheme == .dark)
@@ -111,13 +111,13 @@ struct Panel: View {
                                 .font(.system(size: 10)).foregroundStyle(available ? ink : .secondary)
                         }
                     }
-                    Text(provider == .codex ? "Connecte-toi à Codex sur ce Mac. La connexion au site ChatGPT seule ne suffit pas." : "Connecte-toi à claude.ai dans ton navigateur. La connexion à Claude Code seule ne suffit pas.")
+                    Text(provider == .codex ? "Connecte-toi à Codex sur ce Mac. La connexion au site ChatGPT seule ne suffit pas." : "Connecte-toi à Claude Code sur ce Mac. La connexion au site claude.ai seule ne suffit pas.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     if model.setupCheckStarted, !model.refreshing, let error = model.errors[provider] {
                         Text(error.message).font(.system(size: 10)).foregroundStyle(.orange)
                     }
                     HStack {
-                        Button(provider == .codex ? "Aide pour se connecter" : "Ouvrir claude.ai") { model.openSetupHelp(provider) }
+                        Button("Aide pour se connecter") { model.openSetupHelp(provider) }
                             .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(ink)
                         Spacer()
                     }
@@ -125,7 +125,7 @@ struct Panel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Brand.color(provider).opacity(colorScheme == .dark ? 0.12 : 0.07), in: RoundedRectangle(cornerRadius: 10))
             }
-            Text("macOS peut demander une autorisation pour accéder à la session du navigateur. La vérification commence quand tu cliques sur le bouton.")
+            Text("La vérification commence quand tu cliques sur le bouton.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
             if model.setupCheckStarted {
                 Button(model.refreshing ? "Vérification en cours…" : "Vérifier à nouveau") { model.checkSetup() }
@@ -221,7 +221,7 @@ struct Panel: View {
                         Spacer(minLength: 4)
                         Button { model.openAccountSettings(provider) } label: { Image(systemName: "arrow.up.right") }
                             .buttonStyle(.plain).foregroundStyle(.secondary)
-                            .help(provider == .codex ? "Gérer le compte OpenAI. La connexion utilisée est celle de Codex sur ce Mac." : "Gérer le compte Claude dans le navigateur.")
+                            .help(provider == .codex ? "Gérer le compte OpenAI. La connexion utilisée est celle de Codex sur ce Mac." : "Gérer le compte Claude. La connexion utilisée est celle de Claude Code sur ce Mac.")
                             .accessibilityLabel("Gérer le compte \(provider.title)")
                         Toggle(provider.title, isOn: Binding(get: { model.enabledProviders.contains(provider) },
                                                            set: { model.setEnabled($0, for: provider) }))
@@ -229,7 +229,7 @@ struct Panel: View {
                     }
                     if provider != Provider.allCases.last { Divider() }
                 }
-                Text("Les quotas disponibles apparaissent dans la barre. Connexion via Codex ou claude.ai.")
+                Text("Les quotas disponibles apparaissent dans la barre. Connexion via Codex et Claude Code.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
             settingsSection("CONSOMMATION") {
@@ -245,7 +245,6 @@ struct Panel: View {
                 if let error = model.trendStorageError { Text(error).foregroundStyle(.orange) }
             }
             if let error = model.settingsError { Text(error).foregroundStyle(.orange) }
-            if model.helperPath.isEmpty { Text("Lecteur indisponible. Réinstalle QuotaBar.").foregroundStyle(.orange) }
             Text("QuotaBar \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
         }.font(.system(size: 11))

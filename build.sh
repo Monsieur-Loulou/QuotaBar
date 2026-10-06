@@ -7,9 +7,9 @@ case "${1:-}" in
   *) printf 'Usage: sh build.sh [--universal]\n' >&2; exit 2 ;;
 esac
 if [ "$#" -gt 1 ]; then printf 'Usage: sh build.sh [--universal]\n' >&2; exit 2; fi
-sh prepare-reader.sh
 task_app_dir="$PWD/dist/QuotaBar.app"
-mkdir -p "$task_app_dir/Contents/MacOS" "$task_app_dir/Contents/Resources" "$task_app_dir/Contents/Helpers"
+rm -rf "$task_app_dir/Contents/Helpers"
+mkdir -p "$task_app_dir/Contents/MacOS" "$task_app_dir/Contents/Resources"
 if [ "$task_universal" = true ]; then
   for task_arch in arm64 x86_64; do
     task_scratch="$PWD/.build/universal-$task_arch"
@@ -25,9 +25,6 @@ else
   cp "$task_bin_dir/QuotaBar" "$task_app_dir/Contents/MacOS/QuotaBar"
 fi
 cp -R "$task_bin_dir/QuotaBar_QuotaBar.bundle" "$task_app_dir/Contents/Resources/"
-task_reader_dir="$PWD/.vendor/signed-reader/CodexBar.app/Contents/Helpers"
-cp "$task_reader_dir/CodexBarCLI" "$task_app_dir/Contents/Helpers/"
-cp -R "$task_reader_dir/CodexBar_CodexBarCore.bundle" "$task_app_dir/Contents/Helpers/"
 cp LICENSE "$task_app_dir/Contents/Resources/QuotaBar-LICENSE.txt"
 swift scripts/make-app-icon.swift "$PWD/dist/QuotaBar.iconset"
 iconutil -c icns "$PWD/dist/QuotaBar.iconset" -o "$task_app_dir/Contents/Resources/QuotaBar.icns"
@@ -56,7 +53,6 @@ fi
 /usr/bin/codesign --verify --deep --strict "$task_app_dir"
 if [ "$task_universal" = true ]; then
   lipo "$task_app_dir/Contents/MacOS/QuotaBar" -verify_arch arm64 x86_64
-  lipo "$task_app_dir/Contents/Helpers/CodexBarCLI" -verify_arch arm64 x86_64
 fi
 "$task_app_dir/Contents/MacOS/QuotaBar" --verify-resources
 printf 'Application : %s\n' "$task_app_dir"

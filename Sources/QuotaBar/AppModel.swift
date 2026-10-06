@@ -59,7 +59,6 @@ final class AppModel: ObservableObject {
     var freshnessInterval: TimeInterval { refreshMode.freshnessInterval }
     @Published var loginEnabled = SMAppService.mainApp.status == .enabled
     @Published var settingsError: String?
-    let helperPath: String
     let demo: Bool
     var onChange: (() -> Void)?
     private var policy = RefreshPolicy()
@@ -74,7 +73,6 @@ final class AppModel: ObservableObject {
 
     init(demo: Bool, demoScenario: String = "normal") {
         self.demo = demo
-        helperPath = HelperReader.bundledHelper() ?? ""
         if demo { loadDemo(scenario: demoScenario) } else {
             displayMode = QuotaDisplayMode(rawValue: UserDefaults.standard.string(forKey: "quotaDisplayMode") ?? "") ?? .remaining
             refreshMode = RefreshMode(rawValue: UserDefaults.standard.string(forKey: "quotaRefreshMode") ?? "") ?? .fifteenMinutes
@@ -105,7 +103,7 @@ final class AppModel: ObservableObject {
         setupCheckedProviders.removeAll()
         setupCheckStarted = true
         policy.setReadAuthorization(true)
-        refresh(force: true, allowPrompt: true)
+        refresh(force: true)
         onChange?()
     }
 
@@ -126,7 +124,7 @@ final class AppModel: ObservableObject {
     }
 
     func openSetupHelp(_ provider: Provider) {
-        let address = provider == .codex ? "https://developers.openai.com/codex/auth/" : "https://claude.ai/"
+        let address = provider == .codex ? "https://developers.openai.com/codex/auth/" : "https://code.claude.com/docs/en/quickstart"
         if let url = URL(string: address) { NSWorkspace.shared.open(url) }
     }
 
@@ -140,8 +138,7 @@ final class AppModel: ObservableObject {
         onChange?()
     }
 
-    /// `allowPrompt` comes only from the explicit connection check, never from the timer or panel opening.
-    func refresh(force: Bool, allowPrompt: Bool = false) {
+    func refresh(force: Bool) {
         guard !setupVisible || (setupCheckStarted && force),
               !selectedProviders.isEmpty, !demo, policy.begin(now: Date(), force: force) else { return }
         timer?.invalidate(); timer = nil
@@ -149,12 +146,12 @@ final class AppModel: ObservableObject {
         displayDate = Date()
         generation += 1
         let currentGeneration = generation
-        let reader = HelperReader(path: helperPath, configPath: resourcesURL.appendingPathComponent("reader-config.json").path)
+        let reader = QuotaReader()
         refreshTask = Task { [weak self] in
             await withTaskGroup(of: (Provider, Result<QuotaSnapshot, QuotaError>).self) { group in
                 for provider in self?.selectedProviders ?? [] {
                     group.addTask {
-                        do { return (provider, .success(try await reader.fetch(provider, allowPrompt: allowPrompt))) }
+                        do { return (provider, .success(try await reader.fetch(provider))) }
                         catch { return (provider, .failure(error as? QuotaError ?? .helperFailed)) }
                     }
                 }
