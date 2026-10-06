@@ -105,7 +105,7 @@ final class AppModel: ObservableObject {
         setupCheckedProviders.removeAll()
         setupCheckStarted = true
         policy.setReadAuthorization(true)
-        refresh(force: true)
+        refresh(force: true, allowPrompt: true)
         onChange?()
     }
 
@@ -140,7 +140,8 @@ final class AppModel: ObservableObject {
         onChange?()
     }
 
-    func refresh(force: Bool) {
+    /// `allowPrompt` comes only from the explicit connection check, never from the timer or panel opening.
+    func refresh(force: Bool, allowPrompt: Bool = false) {
         guard !setupVisible || (setupCheckStarted && force),
               !selectedProviders.isEmpty, !demo, policy.begin(now: Date(), force: force) else { return }
         timer?.invalidate(); timer = nil
@@ -153,7 +154,7 @@ final class AppModel: ObservableObject {
             await withTaskGroup(of: (Provider, Result<QuotaSnapshot, QuotaError>).self) { group in
                 for provider in self?.selectedProviders ?? [] {
                     group.addTask {
-                        do { return (provider, .success(try await reader.fetch(provider))) }
+                        do { return (provider, .success(try await reader.fetch(provider, allowPrompt: allowPrompt))) }
                         catch { return (provider, .failure(error as? QuotaError ?? .helperFailed)) }
                     }
                 }

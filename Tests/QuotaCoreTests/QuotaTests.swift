@@ -262,6 +262,27 @@ private func payload(_ usage: String, provider: String = "codex", source: String
     }
 }
 
+@MainActor func keychainRequestOnlyOnExplicitClaudeCheck() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("quota-prompt-check-" + UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let log = folder.appendingPathComponent("calls")
+    let helper = folder.appendingPathComponent("CodexBarCLI")
+    // Records each subcommand; every quota read fails, like a reader without browser access.
+    try Data("#!/bin/sh\nprintf '%s\\n' \"$1\" >> '\(log.path)'\nexit 1\n".utf8).write(to: helper)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+    let reader = HelperReader(path: helper.path, configPath: "/dev/null")
+    func calls() -> [String] {
+        ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+    }
+    await expectThrows(QuotaError.unavailable) { try await reader.fetch(.claude) }
+    expect(calls() == ["usage"])
+    await expectThrows(QuotaError.unavailable) { try await reader.fetch(.codex, allowPrompt: true) }
+    expect(calls() == ["usage", "usage"])
+    await expectThrows(QuotaError.unavailable) { try await reader.fetch(.claude, allowPrompt: true) }
+    expect(calls() == ["usage", "usage", "usage", "cookie", "usage"])
+}
+
 @MainActor func readerMustStayInsideTheApp() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("quota-reader-check-" + UUID().uuidString)
     let app = folder.appendingPathComponent("Moved QuotaBar.app")
@@ -347,6 +368,7 @@ static func main() async {
         try await subprocessHasBoundedOutputAndTime()
         await cancellationStopsAWholeFetch()
         try await cancellationReapsRunningHelperAndItsChild()
+        try await keychainRequestOnlyOnExplicitClaudeCheck()
         try readerMustStayInsideTheApp()
     } catch { Checks.failures.append("Unexpected error: \(error)") }
     for failure in Checks.failures { print("FAIL: \(failure)") }

@@ -20,7 +20,7 @@ public enum BoundedProcess {
     /// No shell, no stderr capture, bounded stdout, cancellable process group and a hard deadline.
     public static func run(path: String, arguments: [String], environment: [String: String],
                            timeout: TimeInterval = 45, capacity: Int = 262_144) async throws -> ProcessResult {
-        guard timeout.isFinite, timeout > 0, timeout <= 60, capacity > 0, capacity <= 1_048_576 else {
+        guard timeout.isFinite, timeout > 0, timeout <= 120, capacity > 0, capacity <= 1_048_576 else {
             throw QuotaError.helperFailed
         }
         let cancellation = try Cancellation()
@@ -65,16 +65,32 @@ public struct HelperReader: Sendable {
         return helper.path
     }
 
-    public func fetch(_ provider: Provider) async throws -> QuotaSnapshot {
-        guard FileManager.default.isExecutableFile(atPath: path) else { throw QuotaError.helperMissing }
-        // Deliberately omit inherited API keys, tokens, proxy overrides and verbose logging.
-        // The bundled signed helper owns authentication; QuotaBar never opens credential storage.
-        let environment = [
+    // Deliberately omit inherited API keys, tokens, proxy overrides and verbose logging.
+    // The bundled signed helper owns authentication; QuotaBar never opens credential storage.
+    private var environment: [String: String] {
+        [
             "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
             "USER": NSUserName(), "TMPDIR": NSTemporaryDirectory(),
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
             "LANG": "en_US.UTF-8", "CODEXBAR_CONFIG": configPath,
         ]
+    }
+
+    /// `allowPrompt` is for an explicit user action only. If Claude fails, the reader may then show
+    /// the macOS Keychain dialog for the browser's cookie key once, and the read is retried.
+    public func fetch(_ provider: Provider, allowPrompt: Bool = false) async throws -> QuotaSnapshot {
+        do { return try await read(provider) }
+        catch QuotaError.unavailable where allowPrompt && provider == .claude {
+            // Leaves time to type the Mac password; the reader never prints cookie values.
+            _ = try await BoundedProcess.run(path: path, arguments: [
+                "cookie", "refresh", "--provider", "claude", "--allow-keychain-prompt", "--format", "json", "--json-only",
+            ], environment: environment, timeout: 120)
+            return try await read(provider)
+        }
+    }
+
+    private func read(_ provider: Provider) async throws -> QuotaSnapshot {
+        guard FileManager.default.isExecutableFile(atPath: path) else { throw QuotaError.helperMissing }
         let result = try await BoundedProcess.run(path: path, arguments: [
             "usage", "--provider", provider.rawValue, "--source", provider == .claude ? "web" : "oauth",
             "--format", "json", "--json-only", "--no-color",

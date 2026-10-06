@@ -16,13 +16,7 @@ QuotaBar fonctionne sur macOS 14 ou plus récent, sur Mac Intel et Apple Silicon
 
 Le premier écran permet de vérifier les connexions, puis d’utiliser l’app même si une seule IA est disponible. La vérification peut aussi être relancée depuis les réglages. Une connexion Codex locale et une session claude.ai dans un navigateur pris en charge par le lecteur restent nécessaires. Une connexion au site ChatGPT seule, ou à Claude Code seul, ne suffit pas. La source Codex du lecteur figé utilise le fichier de connexion local par défaut ; une session stockée uniquement dans le trousseau ou dans un dossier Codex personnalisé peut ne pas être détectée.
 
-Pour Claude dans Chrome, Brave ou un autre navigateur Chromium, le lecteur doit pouvoir lire la clé de chiffrement des cookies de ce navigateur dans le trousseau macOS. Il ne demande jamais cette autorisation en arrière-plan : sans elle, Claude reste indisponible. Pour l’accorder une fois, depuis Terminal :
-
-```sh
-~/Applications/QuotaBar.app/Contents/Helpers/CodexBarCLI cookie refresh --provider claude --allow-keychain-prompt
-```
-
-macOS demande alors l’accès à l’élément « Safe Storage » du navigateur. Vérifiez que la demande vient de `CodexBarCLI` avant de l’accepter. La commande n’affiche aucune valeur de cookie.
+Pour Claude dans Chrome, Brave ou un autre navigateur Chromium, le lecteur doit pouvoir lire la clé de chiffrement des cookies de ce navigateur dans le trousseau macOS. Il ne demande jamais cette autorisation en arrière-plan. Un clic sur « Vérifier les connexions » la demande si Claude est indisponible : macOS affiche alors l’accès à l’élément « Safe Storage » du navigateur. Vérifiez que la demande vient de `CodexBarCLI` avant de l’accepter ; « Toujours autoriser » évite de la revoir lorsque la session claude.ai est renouvelée. Le lecteur n’affiche aucune valeur de cookie.
 
 Le build actuel utilise une signature locale, sans validation Apple. macOS peut donc bloquer une app téléchargée. Consultez l’[aide Apple sur l’ouverture d’une app hors App Store](https://support.apple.com/fr-fr/102445) avant de décider de l’autoriser. QuotaBar ne modifie pas les protections du Mac.
 
