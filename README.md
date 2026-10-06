@@ -6,16 +6,23 @@ Le code de QuotaBar est sous [licence MIT](LICENSE). Le lecteur et les logos de 
 
 QuotaBar affiche les logos OpenAI et Claude avec leur quota hebdomadaire restant dans la barre de menu macOS. Un clic ouvre un panneau compact aux couleurs des fournisseurs, sans barres de progression, avec les limites disponibles et le jour et l’heure locale de remise à zéro. Le nom de chaque limite, sa date de reset et son pourcentage partagent une ligne ; le rythme de consommation apparaît juste dessous. L’adresse du compte est alignée à droite du fournisseur. La fenêtre adapte sa hauteur au contenu, y compris lorsque les réglages ou les données changent. Le défilement n’est utilisé que si le contenu dépasse la hauteur disponible de l’écran. Les réglages permettent d’afficher les pourcentages restants ou consommés, dans le panneau et dans la barre de menu.
 
-L’app effectue une lecture au lancement. Les réglages proposent ensuite à l’ouverture du panneau, ou toutes les 1, 5, 15 ou 30 minutes avec lecture à l’ouverture. Le choix est conservé ; 15 minutes reste le réglage initial. Les réglages permettent aussi d’activer ou désactiver OpenAI et Claude. Seuls les fournisseurs sélectionnés sont interrogés ; seuls ceux dont un quota récent est disponible apparaissent dans la barre de menu. Une icône QuotaBar donne accès aux réglages lorsqu’aucun quota n’est disponible. Une ouverture pendant une lecture en cours réutilise cette lecture. Chaque refresh repousse le prochain refresh automatique de l’intervalle choisi. Pendant la veille, l’app annule la lecture et suspend son minuteur. Au réveil, un mode périodique effectue au plus une lecture due ou interrompue ; le mode à l’ouverture attend son déclencheur explicite.
+Au premier lancement, un écran explique les connexions utilisées. La lecture commence uniquement après un clic sur « Vérifier les connexions ». « Plus tard » laisse l’app en attente ; un clic sur son icône rouvre cet écran. Après cette étape, l’app effectue une lecture au lancement. Les réglages proposent ensuite à l’ouverture du panneau, ou toutes les 1, 5, 15 ou 30 minutes avec lecture à l’ouverture. Le choix est conservé ; 15 minutes reste le réglage initial. Les réglages permettent aussi d’activer ou désactiver OpenAI et Claude. Seuls les fournisseurs sélectionnés sont interrogés ; seuls ceux dont un quota récent est disponible apparaissent dans la barre de menu. Une icône QuotaBar donne accès aux réglages lorsqu’aucun quota n’est disponible. Une ouverture pendant une lecture en cours réutilise cette lecture. Chaque refresh repousse le prochain refresh automatique de l’intervalle choisi. Pendant la veille, l’app annule la lecture et suspend son minuteur. Au réveil, un mode périodique effectue au plus une lecture due ou interrompue ; le mode à l’ouverture attend son déclencheur explicite.
 
 Les valeurs expirent après 16 minutes, ou 31 minutes avec la fréquence de 30 minutes, et au reset de la fenêtre hebdomadaire. Un événement local masque les anciennes valeurs dans la barre, même en mode à l’ouverture, sans déclencher de lecture réseau. Une erreur sur un fournisseur n’empêche pas l’autre de fonctionner. Le panneau affiche une erreur et peut conserver une dernière lecture atténuée ; une session absente et une panne réseau ne sont pas distinguées par le lecteur de QuotaBar.
 
-## Prérequis
+## Installer l’app
+
+QuotaBar fonctionne sur macOS 14 ou plus récent, sur Mac Intel et Apple Silicon. Les paquets de distribution sont un `.dmg` à ouvrir puis à glisser dans Applications, ou un `.zip` contenant `QuotaBar.app`. Ils incluent le lecteur : aucune compilation ni installation de CodexBar n’est nécessaire.
+
+Le premier écran permet de vérifier les connexions, puis d’utiliser l’app même si une seule IA est disponible. La vérification peut aussi être relancée depuis les réglages. Une connexion Codex locale et une session claude.ai dans un navigateur pris en charge par le lecteur restent nécessaires. Une connexion au site ChatGPT seule, ou à Claude Code seul, ne suffit pas. La source Codex du lecteur figé utilise le fichier de connexion local par défaut ; une session stockée uniquement dans le trousseau ou dans un dossier Codex personnalisé peut ne pas être détectée.
+
+Le build actuel utilise une signature locale, sans validation Apple. macOS peut donc bloquer une app téléchargée. Consultez l’[aide Apple sur l’ouverture d’une app hors App Store](https://support.apple.com/fr-fr/102445) avant de décider de l’autoriser. QuotaBar ne modifie pas les protections du Mac.
+
+## Prérequis pour compiler
 
 - macOS 14 ou plus récent.
-- Les outils en ligne de commande Apple, avec Swift 6, pour compiler.
+- Les outils en ligne de commande Apple, avec Swift 6.
 - Une connexion internet au premier build pour télécharger le lecteur officiel figé en version 0.52.0.
-- Un compte connecté dans Codex sur ce Mac et une session claude.ai dans un navigateur pris en charge par le lecteur.
 
 CodexBar.app n’a pas besoin d’être installé. QuotaBar contient son propre exemplaire du lecteur open source CodexBarCLI et de ses ressources. Le build les extrait d’une archive officielle dont le SHA-256 est figé, vérifie la signature du lecteur et conserve celle-ci. Il ne copie rien depuis une installation locale de CodexBar.
 
@@ -33,7 +40,16 @@ sh build.sh
 open dist/QuotaBar.app
 ```
 
-Le script produit une app avec une signature locale dans `dist/QuotaBar.app`. Cette signature permet un usage personnel ; elle n’est pas une notarisation pour distribuer publiquement l’app.
+Pour produire les paquets Intel et Apple Silicon :
+
+```sh
+sh build.sh --universal
+sh package-release.sh
+```
+
+Les archives et leurs empreintes SHA-256 sont créées dans `dist/release-0.3.0/`. Le script refuse de remplacer un dossier de release existant.
+
+Le script de build produit une app avec une signature locale dans `dist/QuotaBar.app`. Cette signature permet un usage personnel ; elle n’est pas une notarisation pour distribuer publiquement l’app.
 
 Pour une installation durable, copiez l’app dans `~/Applications`. Le lancement automatique reste désactivé tant que vous ne l’activez pas dans les réglages de QuotaBar. QuotaBar ne désinstalle aucune autre application.
 

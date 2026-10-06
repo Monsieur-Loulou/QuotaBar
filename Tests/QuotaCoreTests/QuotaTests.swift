@@ -304,9 +304,31 @@ private func payload(_ usage: String, provider: String = "codex", source: String
     expect(QuotaResetLabel.text(date, now: date, timeZone: TimeZone(secondsFromGMT: 0)!).contains("attente"))
 }
 
+@MainActor func firstLaunchReadAuthorization() {
+    let now = Date(timeIntervalSince1970: 1_790_500_000)
+    for mode in RefreshMode.allCases {
+        var policy = RefreshPolicy(mode: mode)
+        policy.setReadAuthorization(false)
+        expect(!policy.begin(now: now, force: true))
+        expect(!policy.begin(now: now, force: false))
+        policy.setMode(.oneMinute, now: now)
+        expect(policy.nextAutomatic == nil)
+        policy.sleep()
+        policy.wake()
+        expect(!policy.begin(now: now.addingTimeInterval(86400), force: false))
+        policy.setReadAuthorization(true)
+        expect(policy.begin(now: now, force: true))
+        policy.finish()
+        policy.setReadAuthorization(false)
+        expect(policy.nextAutomatic == nil)
+        expect(!policy.begin(now: now.addingTimeInterval(86400), force: false))
+    }
+}
+
 @main @MainActor struct QuotaCoreCheckRunner {
 static func main() async {
     do {
+        firstLaunchReadAuthorization()
         displayModesAndAbsoluteResetDates()
         try quotaTrendChecks()
         quotaForecastChecks()

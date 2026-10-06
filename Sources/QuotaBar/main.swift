@@ -14,16 +14,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePanel)
-        model.onChange = { [weak self] in self?.updateStatus() }
+        model.onChange = { [weak self] in self?.updateStatus(); self?.resizePreview() }
         updateStatus()
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
         center.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
+        model.onSetupFinished = { [weak self] in self?.window?.close() }
+        if model.setupVisible || CommandLine.arguments.contains("--preview") { showPreview() }
         model.start()
-        if CommandLine.arguments.contains("--preview") { showPreview() }
     }
 
     @objc private func togglePanel() {
+        if model.setupVisible || model.needsInitialSetup {
+            if !model.setupVisible { model.showSetup() }
+            showPreview(); return
+        }
         guard let button = statusItem.button else { return }
         if statusPanel.isVisible { statusPanel.close() } else {
             guard let buttonWindow = button.window,
@@ -46,13 +51,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showPreview() {
+        if let window, window.isVisible { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
         let controller = NSHostingController(rootView: Panel(model: model))
+        controller.sizingOptions = []
         let window = NSWindow(contentViewController: controller)
         window.title = model.demo ? "QuotaBar · Démonstration" : "QuotaBar"
         window.styleMask = [.titled, .closable]
         window.center(); window.makeKeyAndOrderFront(nil)
         self.window = window
+        resizePreview()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func resizePreview() {
+        guard let window, window.isVisible, let controller = window.contentViewController as? NSHostingController<Panel>,
+              let screen = window.screen ?? NSScreen.main else { return }
+        let width = min(350, screen.visibleFrame.width - 32)
+        let natural = Panel.naturalSize(model: model, width: width)
+        let height = min(natural.height, screen.visibleFrame.height - 48)
+        controller.rootView = Panel(model: model, width: width, constrainedHeight: natural.height > height ? height : nil)
+        window.setContentSize(NSSize(width: width, height: height))
     }
 
     @objc private func willSleep() { statusPanel.close(); model.sleep() }
@@ -73,7 +91,7 @@ if CommandLine.arguments.contains("--verify-panel") {
 
 if let index = CommandLine.arguments.firstIndex(of: "--render-demo"), index + 1 < CommandLine.arguments.count {
     let destination = URL(fileURLWithPath: CommandLine.arguments[index + 1])
-    let scenario = CommandLine.arguments.contains("--forecast") ? "forecast" : CommandLine.arguments.contains("--long") ? "long" : CommandLine.arguments.contains("--error") ? "error" : CommandLine.arguments.contains("--trend") ? "trend" : CommandLine.arguments.contains("--disconnected") ? "disconnected" : "normal"
+    let scenario = CommandLine.arguments.contains("--setup-error") ? "setup-error" : CommandLine.arguments.contains("--setup-ready") ? "setup-ready" : CommandLine.arguments.contains("--setup") ? "setup" : CommandLine.arguments.contains("--forecast") ? "forecast" : CommandLine.arguments.contains("--long") ? "long" : CommandLine.arguments.contains("--error") ? "error" : CommandLine.arguments.contains("--trend") ? "trend" : CommandLine.arguments.contains("--disconnected") ? "disconnected" : "normal"
     let model = AppModel(demo: true, demoScenario: scenario)
     if CommandLine.arguments.contains("--settings") { model.settingsVisible = true }
     if CommandLine.arguments.contains("--used") { model.displayMode = .used }

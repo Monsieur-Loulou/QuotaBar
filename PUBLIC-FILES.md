@@ -1,6 +1,6 @@
 # Sources publiques
 
-Ce dépôt contient les sources de QuotaBar 0.2.8 (build 10), les tests, les scripts de build et les notices de licence. Le lecteur signé est téléchargé depuis sa release officielle lors du build ; aucun binaire ne fait partie de cet inventaire.
+Ce dépôt contient les sources de QuotaBar 0.3.0 (build 11), les tests, les scripts de build et les notices de licence. Le lecteur signé est téléchargé depuis sa release officielle lors du build ; aucun binaire ne fait partie de cet inventaire.
 
 Les données de compte, l’historique local, les instructions de travail privées, les builds et les archives téléchargées sont exclus. `LICENSE` s’applique au code propre à QuotaBar ; les notices du lecteur et des logos restent conservées dans les ressources.
 
@@ -32,6 +32,8 @@ Sources/QuotaCore/RefreshPolicy.swift
 Tests/QuotaCoreTests/QuotaTests.swift
 Tests/QuotaCoreTests/TrendTests.swift
 build.sh
+package-release.sh
 prepare-reader.sh
+scripts/make-app-icon.swift
 verify-standalone.sh
 ```
