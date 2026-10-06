@@ -54,7 +54,6 @@ final class AppModel: ObservableObject {
     var freshnessInterval: TimeInterval { refreshMode.freshnessInterval }
     @Published var loginEnabled = SMAppService.mainApp.status == .enabled
     @Published var settingsError: String?
-    let helperPath: String
     let demo: Bool
     var onChange: (() -> Void)?
     private var policy = RefreshPolicy()
@@ -69,7 +68,6 @@ final class AppModel: ObservableObject {
 
     init(demo: Bool, demoScenario: String = "normal") {
         self.demo = demo
-        helperPath = HelperReader.bundledHelper() ?? ""
         if demo { loadDemo(scenario: demoScenario) } else {
             displayMode = QuotaDisplayMode(rawValue: UserDefaults.standard.string(forKey: "quotaDisplayMode") ?? "") ?? .remaining
             refreshMode = RefreshMode(rawValue: UserDefaults.standard.string(forKey: "quotaRefreshMode") ?? "") ?? .fifteenMinutes
@@ -96,7 +94,7 @@ final class AppModel: ObservableObject {
         displayDate = Date()
         generation += 1
         let currentGeneration = generation
-        let reader = HelperReader(path: helperPath, configPath: resourcesURL.appendingPathComponent("reader-config.json").path)
+        let reader = QuotaReader()
         refreshTask = Task { [weak self] in
             await withTaskGroup(of: (Provider, Result<QuotaSnapshot, QuotaError>).self) { group in
                 for provider in self?.selectedProviders ?? [] {

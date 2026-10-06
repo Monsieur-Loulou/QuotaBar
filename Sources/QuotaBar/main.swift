@@ -98,15 +98,9 @@ if let index = CommandLine.arguments.firstIndex(of: "--render-demo"), index + 1 
 
 if CommandLine.arguments.contains("--verify-resources") {
     let contained = resourcesURL.path.hasPrefix(Bundle.main.bundleURL.path + "/Contents/Resources/")
-    let config = try? Data(contentsOf: resourcesURL.appendingPathComponent("reader-config.json"))
-    let parsed = config.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     let logos = Provider.allCases.allSatisfy { !Brand.image($0).representations.isEmpty }
-    let reader = HelperReader.bundledHelper()
-    let readerResources = reader.map { URL(fileURLWithPath: $0).deletingLastPathComponent()
-        .appendingPathComponent("CodexBar_CodexBarCore.bundle").path }
-    let valid = contained && parsed?["version"] as? Int == 1 && logos
-        && readerResources.map { FileManager.default.fileExists(atPath: $0) } == true
-    print(valid ? "Bundled reader, configuration and both logos: OK" : "Bundled resources: FAILED")
+    let valid = contained && logos
+    print(valid ? "Bundled logos: OK" : "Bundled resources: FAILED")
     exit(valid ? 0 : 1)
 }
 
@@ -126,8 +120,7 @@ if CommandLine.arguments.contains("--login-status") {
 
 if CommandLine.arguments.contains("--check") {
     Task {
-        guard let path = HelperReader.bundledHelper() else { print("Lecteur intégré absent"); exit(1) }
-        let reader = HelperReader(path: path, configPath: resourcesURL.appendingPathComponent("reader-config.json").path)
+        let reader = QuotaReader()
         var failed = false
         for provider in Provider.allCases {
             let started = Date()

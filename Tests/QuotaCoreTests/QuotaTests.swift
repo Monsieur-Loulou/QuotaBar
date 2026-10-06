@@ -20,87 +20,74 @@ import QuotaCore
 }
 
 private let now = Date(timeIntervalSince1970: 1_790_597_000)
-private func payload(_ usage: String, provider: String = "codex", source: String = "oauth") -> Data {
-    Data("""
-    [{"provider":"\(provider)","source":"\(source)","usage":{
-    "updatedAt":"\(ISO8601DateFormatter().string(from: now))",\(usage)}}]
-    """.utf8)
-}
+private func json(_ text: String) -> Data { Data(text.utf8) }
+private let codexAccount = json(#"{"account":{"type":"chatgpt","email":"example@example.test","planType":"pro"}}"#)
 
-@MainActor func weeklyUsesItsActualWindowNotPrimaryPosition() throws {
-    let value = try QuotaDecoder.decode(payload("""
-    "primary":{"usedPercent":60,"windowMinutes":300},
-    "secondary":{"usedPercent":2,"windowMinutes":10080},
-    "extraRateWindows":[{"id":"fable","title":"Fable only","window":{"usedPercent":10},"usageKnown":true}]
-    """), for: .codex, now: now)
+@MainActor func codexWeeklyUsesItsActualWindowNotPrimaryPosition() throws {
+    let value = try QuotaDecoder.codex(account: codexAccount, limits: json("""
+    {"rateLimits":{"primary":{"usedPercent":60,"windowDurationMins":300,"resetsAt":1790600000},
+    "secondary":{"usedPercent":2,"windowDurationMins":10080,"resetsAt":1791000000}}}
+    """), now: now)
     expect(value.weekly?.remaining == 98)
-    expect(value.rows.count == 3)
+    expect(value.weekly?.resetsAt == Date(timeIntervalSince1970: 1_791_000_000))
+    expect(value.rows.first?.title == "Session · 5 heures")
+    expect(value.accountLabel == "example@example.test")
+    expect(value.measuredAt == now)
     expect(value.menuValue(now: now, failed: false) == "98%")
 }
 
-@MainActor func primaryCanBeWeeklyAndMissingIsNotOneHundred() throws {
-    let value = try QuotaDecoder.decode(payload("""
-    "primary":{"usedPercent":5,"windowMinutes":10080}
-    """), for: .codex, now: now)
-    expect(value.weekly?.remaining == 95)
-    let missing = try QuotaDecoder.decode(payload("""
-    "secondary":{"windowMinutes":10080}
-    """), for: .codex, now: now)
+@MainActor func codexPrimaryCanBeWeeklyAndMissingIsNotOneHundred() throws {
+    let value = try QuotaDecoder.codex(account: codexAccount, limits: json("""
+    {"rateLimits":{"primary":{"usedPercent":61,"windowDurationMins":10080,"resetsAt":1791637613},"secondary":null}}
+    """), now: now)
+    expect(value.weekly?.remaining == 39)
+    expect(value.rows.count == 1)
+    let missing = try QuotaDecoder.codex(account: codexAccount, limits: json("""
+    {"rateLimits":{"primary":{"windowDurationMins":10080}}}
+    """), now: now)
     expect(missing.weekly?.remaining == nil)
     expect(missing.menuValue(now: now, failed: false) == "--")
 }
 
-@MainActor func modelWeeklyIsNotTheOverallWeeklyQuota() throws {
-    let raw = """
-    [{"provider":"claude","source":"web","rateWindowLabels":{"tertiary":"Sonnet"},
-    "usage":{"updatedAt":"\(ISO8601DateFormatter().string(from: now))",
-    "tertiary":{"usedPercent":10,"windowMinutes":10080}}}]
-    """
-    let value = try QuotaDecoder.decode(Data(raw.utf8), for: .claude, now: now)
-    expect(value.weekly == nil)
-    expect(value.rows.first?.title == "Sonnet")
-    expect(value.menuValue(now: now, failed: false) == "--")
+@MainActor func codexSignedOutAndInvalidAnswers() {
+    expectThrows(QuotaError.codexSignedOut) {
+        try QuotaDecoder.codex(account: json(#"{"account":null}"#), limits: json(#"{"rateLimits":null}"#), now: now)
+    }
+    expectThrows(QuotaError.unavailable) {
+        try QuotaDecoder.codex(account: codexAccount, limits: json(#"{"rateLimits":null}"#), now: now)
+    }
+    expectThrows(QuotaError.invalidResponse) {
+        try QuotaDecoder.codex(account: codexAccount, limits: json(#"{"rateLimits":{"primary":{"usedPercent":-2}}}"#), now: now)
+    }
+    expectThrows(QuotaError.invalidResponse) { try QuotaDecoder.codex(account: json("not json"), limits: json("{}"), now: now) }
 }
 
-@MainActor func sourceIdentityIsPreservedAndCannotCrossProviders() throws {
-    let value = try QuotaDecoder.decode(payload("""
-    "identity":{"providerID":"codex","accountEmail":"example@example.test"},
-    "secondary":{"usedPercent":10,"windowMinutes":10080}
-    """), for: .codex, now: now)
+@MainActor func claudeOfficialUsageKeepsModelLimitsSeparate() throws {
+    let value = try QuotaDecoder.claude(usage: json("""
+    {"five_hour":{"utilization":10.0,"resets_at":"2026-10-06T08:30:00.182638+00:00"},
+    "seven_day":{"utilization":49.0,"resets_at":"2026-10-12T06:00:00+00:00"},
+    "seven_day_sonnet":{"utilization":12.5,"resets_at":null},"seven_day_opus":null,
+    "iguana_necktie":{"utilization":0.25},"extra_usage":{"is_enabled":false}}
+    """), profile: json(#"{"account":{"email":"example@example.test"}}"#), now: now)
+    expect(value.weekly?.remaining == 51)
+    expect(value.weekly?.resetsAt == ISO8601DateFormatter().date(from: "2026-10-12T06:00:00Z"))
+    expect(value.rows.map(\.title) == ["Session · 5 heures", "Hebdomadaire", "Sonnet · hebdomadaire"])
+    expect(value.rows.last?.isWeekly == false)
     expect(value.accountLabel == "example@example.test")
+    let modelOnly = try QuotaDecoder.claude(usage: json(#"{"seven_day_sonnet":{"utilization":10}}"#), profile: nil, now: now)
+    expect(modelOnly.weekly == nil)
+    expect(modelOnly.accountLabel == nil)
+    expect(modelOnly.menuValue(now: now, failed: false) == "--")
+    expectThrows(QuotaError.unavailable) { try QuotaDecoder.claude(usage: json("{}"), profile: nil, now: now) }
     expectThrows(QuotaError.invalidResponse) {
-        try QuotaDecoder.decode(payload("""
-        "identity":{"providerID":"claude","accountEmail":"example@example.test"},
-        "secondary":{"usedPercent":10,"windowMinutes":10080}
-        """), for: .codex, now: now)
+        try QuotaDecoder.claude(usage: json(#"{"seven_day":{"utilization":-1}}"#), profile: nil, now: now)
     }
 }
 
-@MainActor func claudeDirectHTTPIncludesItsModelWindows() throws {
-    let value = try QuotaDecoder.decode(payload("""
-    "primary":{"usedPercent":1,"windowMinutes":300},
-    "secondary":{"usedPercent":0,"windowMinutes":10080},
-    "extraRateWindows":[{"id":"fable","title":"Fable only","window":{"usedPercent":0,"windowMinutes":10080}}]
-    """, provider: "claude", source: "web"), for: .claude, now: now)
-    expect(value.weekly?.remaining == 100)
-    expect(value.rows.last?.title == "Fable only")
-}
-
-@MainActor func syntheticAndUnknownWindowsCannotInventQuotas() throws {
-    let value = try QuotaDecoder.decode(payload("""
-    "primary":{"usedPercent":0,"windowMinutes":300,"isSyntheticPlaceholder":true},
-    "secondary":{"usedPercent":100,"windowMinutes":10080},
-    "extraRateWindows":[{"id":"future","title":"Future","usageKnown":false,"window":{"usedPercent":0}}]
-    """), for: .codex, now: now)
-    expect(value.rows.count == 2)
-    expect(value.weekly?.remaining == 0)
-    expect(value.rows.last?.remaining == nil)
-}
-
 @MainActor func staleFailedAndResetSnapshotsNeverLookFreshInTheBar() throws {
-    let value = try QuotaDecoder.decode(payload("""
-    "secondary":{"usedPercent":2,"windowMinutes":10080}
-    """), for: .codex, now: now)
+    let value = try QuotaDecoder.codex(account: codexAccount, limits: json("""
+    {"rateLimits":{"primary":{"usedPercent":2,"windowDurationMins":10080}}}
+    """), now: now)
     expect(value.menuValue(now: now, failed: true) == "--")
     expect(value.menuValue(now: now.addingTimeInterval(961), failed: false) == "--")
     let expired = QuotaSnapshot(provider: .codex, rows: [
@@ -109,18 +96,108 @@ private func payload(_ usage: String, provider: String = "codex", source: String
     expect(expired.menuValue(now: now, failed: false) == "--")
 }
 
-@MainActor func rejectsUnexpectedOrAmbiguousSources() {
-    expectThrows(QuotaError.unsupportedSource) {
-        try QuotaDecoder.decode(payload("\"secondary\":{\"usedPercent\":2}", source: "openai-web"), for: .codex, now: now)
+/// A stand-in for `codex app-server`: answers only once it has read the rate-limit request,
+/// then waits for its stdin to close, like the real server.
+private func fakeServer(_ body: String) throws -> (URL, URL) {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("quota-server-" + UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let server = folder.appendingPathComponent("codex")
+    try Data(("#!/bin/sh\n[ \"$1\" = app-server ] || exit 2\n" + body).utf8).write(to: server)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: server.path)
+    return (folder, server)
+}
+
+/// Codex installed with npm starts through `#!/usr/bin/env node`: the folder next to it must be on PATH.
+@MainActor func codexFromAScriptFindsItsInterpreterNextToIt() async throws {
+    let (folder, server) = try fakeServer("exec quota-fake-node \"$@\"\n")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let node = folder.appendingPathComponent("quota-fake-node")
+    try Data(#"""
+    #!/bin/sh
+    while read -r line; do case "$line" in
+      *'"id":2'*) echo '{"id":2,"result":{"account":{"email":"example@example.test"}}}' ;;
+      *'"id":3'*) echo '{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":1,"windowDurationMins":10080}}}}' ;;
+    esac; done
+    """#.utf8).write(to: node)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+    let value = try await QuotaReader(codexPath: server.path).fetch(.codex)
+    expect(value.weekly?.remaining == 99)
+}
+
+/// Cancelling at any moment of startup neither crashes QuotaBar nor leaves a server running.
+@MainActor func cancellingDuringStartupLeavesNothingBehind() async throws {
+    let (folder, server) = try fakeServer("echo $$ >> \"$(dirname \"$0\")/pids\"\nexec cat > /dev/null\n")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    for attempt in 0..<40 {
+        let task = Task { try await CodexAppServer.request(path: server.path, timeout: 30) }
+        if attempt % 2 == 1 { try await Task.sleep(for: .milliseconds(attempt * 3)) }
+        task.cancel()
+        _ = try? await task.value
     }
-    expectThrows(QuotaError.invalidResponse) {
-        try QuotaDecoder.decode(payload("\"secondary\":{\"usedPercent\":-2}"), for: .codex, now: now)
+    let pids = ((try? String(contentsOf: folder.appendingPathComponent("pids"), encoding: .utf8)) ?? "")
+        .split(separator: "\n").compactMap { Int32($0) }
+    expect(!pids.isEmpty) // some attempts really launched a server
+    let deadline = Date().addingTimeInterval(4)
+    while pids.contains(where: { kill($0, 0) == 0 }), Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+    expect(!pids.contains(where: { kill($0, 0) == 0 }))
+}
+
+@MainActor func codexServerKeepsStdinOpenUntilBothAnswers() async throws {
+    let (folder, server) = try fakeServer(#"""
+    while read -r line; do
+      case "$line" in
+        *'"id":1'*) echo '{"id":1,"result":{}}'; echo '{"method":"remoteControl/status/changed","params":{}}' ;;
+        *'"refreshToken":false'*) echo '{"id":2,"result":{"account":{"email":"example@example.test"}}}' ;;
+        *'"id":2'*) exit 3 ;;
+        *'rateLimits/read'*) { sleep 0.3; echo '{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":5,"windowDurationMins":10080}}}}'; } & pending=$! ;;
+      esac
+    done
+    # Like the real server: end of input drops an answer still in progress.
+    kill "$pending" 2>/dev/null
+    echo closed > "$(dirname "$0")/closed"
+    """#)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let answers = try await CodexAppServer.request(path: server.path, timeout: 5)
+    let value = try QuotaDecoder.codex(account: answers.account, limits: answers.limits, now: now)
+    expect(value.weekly?.remaining == 95)
+    let deadline = Date().addingTimeInterval(2)
+    while !FileManager.default.fileExists(atPath: folder.appendingPathComponent("closed").path), Date() < deadline {
+        try await Task.sleep(for: .milliseconds(20))
     }
-    let single = String(data: payload("\"secondary\":{\"usedPercent\":2}"), encoding: .utf8)!
-    let two = "[" + single.dropFirst().dropLast() + "," + single.dropFirst().dropLast() + "]"
-    expectThrows(QuotaError.multipleAccounts) {
-        try QuotaDecoder.decode(Data(two.utf8), for: .codex, now: now)
-    }
+    expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("closed").path))
+}
+
+@MainActor func codexServerFailuresAreBounded() async throws {
+    let (silentFolder, silent) = try fakeServer("cat > /dev/null\n")
+    defer { try? FileManager.default.removeItem(at: silentFolder) }
+    let started = Date()
+    await expectThrows(QuotaError.timeout) { try await CodexAppServer.request(path: silent.path, timeout: 0.3) }
+    expect(Date().timeIntervalSince(started) < 2)
+    let (earlyFolder, early) = try fakeServer("exit 0\n")
+    defer { try? FileManager.default.removeItem(at: earlyFolder) }
+    await expectThrows(QuotaError.unavailable) { try await CodexAppServer.request(path: early.path, timeout: 5) }
+    let (signedOutFolder, signedOut) = try fakeServer(#"""
+    while read -r line; do case "$line" in
+      *'"id":2'*) echo '{"id":2,"error":{"code":-32600}}' ;;
+      *'"id":3'*) echo '{"id":3,"error":{"code":-32600}}' ;;
+    esac; done
+    """#)
+    defer { try? FileManager.default.removeItem(at: signedOutFolder) }
+    await expectThrows(QuotaError.codexSignedOut) { try await CodexAppServer.request(path: signedOut.path, timeout: 5) }
+    // A null account with a failing limits request is still "signed out"; a null result must not crash.
+    let (nullFolder, nullServer) = try fakeServer(#"""
+    while read -r line; do case "$line" in
+      *'"id":2'*) echo '{"id":2,"result":{"account":null}}' ;;
+      *'"id":3'*) echo '{"id":3,"result":null}' ;;
+    esac; done
+    """#)
+    defer { try? FileManager.default.removeItem(at: nullFolder) }
+    await expectThrows(QuotaError.codexSignedOut) { try await QuotaReader(codexPath: nullServer.path).fetch(.codex) }
+    let task = Task { try await CodexAppServer.request(path: silent.path, timeout: 30) }
+    try await Task.sleep(for: .milliseconds(100))
+    task.cancel()
+    await expectThrows(QuotaError.cancelled) { try await task.value }
+    await expectThrows(QuotaError.codexMissing) { try await QuotaReader(codexPath: nil).fetch(.codex) }
 }
 
 @MainActor func automaticQuarterHourAndPanelAlwaysForcesFreshRead() {
@@ -262,29 +339,6 @@ private func payload(_ usage: String, provider: String = "codex", source: String
     }
 }
 
-@MainActor func readerMustStayInsideTheApp() throws {
-    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("quota-reader-check-" + UUID().uuidString)
-    let app = folder.appendingPathComponent("Moved QuotaBar.app")
-    let helper = app.appendingPathComponent("Contents/Helpers/CodexBarCLI")
-    try FileManager.default.createDirectory(at: helper.deletingLastPathComponent(), withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: folder) }
-    // A missing reader never falls back to the installed CodexBar on this Mac.
-    expect(HelperReader.bundledHelper(in: app) == nil)
-    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: helper)
-    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: helper.path)
-    expect(HelperReader.bundledHelper(in: app) == nil)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
-    expect(HelperReader.bundledHelper(in: app) == helper.resolvingSymlinksInPath().path)
-    let moved = folder.appendingPathComponent("Another location.app")
-    try FileManager.default.moveItem(at: app, to: moved)
-    expect(HelperReader.bundledHelper(in: moved) != nil)
-    let movedHelper = moved.appendingPathComponent("Contents/Helpers/CodexBarCLI")
-    try FileManager.default.removeItem(at: movedHelper)
-    try FileManager.default.createSymbolicLink(atPath: movedHelper.path, withDestinationPath: "/usr/bin/true")
-    expect(HelperReader.bundledHelper(in: moved) == nil)
-    expect(HelperReader.bundledHelper(in: folder) == nil)
-}
-
 @MainActor func displayModesAndAbsoluteResetDates() {
     expect(QuotaDisplayMode.remaining.percentage(41.9) == 41)
     expect(QuotaDisplayMode.used.percentage(41.9) == 58)
@@ -310,14 +364,15 @@ static func main() async {
         displayModesAndAbsoluteResetDates()
         try quotaTrendChecks()
         quotaForecastChecks()
-        try weeklyUsesItsActualWindowNotPrimaryPosition()
-        try primaryCanBeWeeklyAndMissingIsNotOneHundred()
-        try modelWeeklyIsNotTheOverallWeeklyQuota()
-        try sourceIdentityIsPreservedAndCannotCrossProviders()
-        try claudeDirectHTTPIncludesItsModelWindows()
-        try syntheticAndUnknownWindowsCannotInventQuotas()
+        try codexWeeklyUsesItsActualWindowNotPrimaryPosition()
+        try codexPrimaryCanBeWeeklyAndMissingIsNotOneHundred()
+        codexSignedOutAndInvalidAnswers()
+        try claudeOfficialUsageKeepsModelLimitsSeparate()
         try staleFailedAndResetSnapshotsNeverLookFreshInTheBar()
-        rejectsUnexpectedOrAmbiguousSources()
+        try await codexServerKeepsStdinOpenUntilBothAnswers()
+        try await codexServerFailuresAreBounded()
+        try await codexFromAScriptFindsItsInterpreterNextToIt()
+        try await cancellingDuringStartupLeavesNothingBehind()
         automaticQuarterHourAndPanelAlwaysForcesFreshRead()
         refreshModesPreserveExplicitActionsAndReconfigureTimers()
         sleepAndWakeDoNotCatchUpMissedRefreshes()
@@ -325,7 +380,6 @@ static func main() async {
         try await subprocessHasBoundedOutputAndTime()
         await cancellationStopsAWholeFetch()
         try await cancellationReapsRunningHelperAndItsChild()
-        try readerMustStayInsideTheApp()
     } catch { Checks.failures.append("Unexpected error: \(error)") }
     for failure in Checks.failures { print("FAIL: \(failure)") }
     print("\(Checks.assertions) assertions, \(Checks.failures.count) failures")

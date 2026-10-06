@@ -160,7 +160,7 @@ struct Panel: View {
                         Spacer(minLength: 4)
                         Button { model.openAccountSettings(provider) } label: { Image(systemName: "arrow.up.right") }
                             .buttonStyle(.plain).foregroundStyle(.secondary)
-                            .help(provider == .codex ? "Gérer le compte OpenAI. La connexion utilisée est celle de Codex sur ce Mac." : "Gérer le compte Claude dans le navigateur.")
+                            .help(provider == .codex ? "Gérer le compte OpenAI. La connexion utilisée est celle de Codex sur ce Mac." : "Gérer le compte Claude. La connexion utilisée est celle de Claude Code sur ce Mac.")
                             .accessibilityLabel("Gérer le compte \(provider.title)")
                         Toggle(provider.title, isOn: Binding(get: { model.enabledProviders.contains(provider) },
                                                            set: { model.setEnabled($0, for: provider) }))
@@ -168,7 +168,7 @@ struct Panel: View {
                     }
                     if provider != Provider.allCases.last { Divider() }
                 }
-                Text("Les quotas disponibles apparaissent dans la barre. Connexion via Codex ou claude.ai.")
+                Text("Les quotas disponibles apparaissent dans la barre. Connexion via Codex et Claude Code.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
             settingsSection("CONSOMMATION") {
@@ -184,7 +184,6 @@ struct Panel: View {
                 if let error = model.trendStorageError { Text(error).foregroundStyle(.orange) }
             }
             if let error = model.settingsError { Text(error).foregroundStyle(.orange) }
-            if model.helperPath.isEmpty { Text("Lecteur indisponible. Réinstalle QuotaBar.").foregroundStyle(.orange) }
             Text("QuotaBar \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
         }.font(.system(size: 11))

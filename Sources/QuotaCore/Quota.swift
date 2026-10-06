@@ -74,109 +74,100 @@ public struct QuotaSnapshot: Codable, Equatable, Sendable {
 }
 
 public enum QuotaError: Error, Equatable, Sendable {
-    case helperMissing, helperFailed, timeout, cancelled, oversizedOutput, invalidResponse
-    case unavailable, multipleAccounts, unsupportedSource
+    case helperFailed, timeout, cancelled, oversizedOutput, invalidResponse, unavailable
+    case codexMissing, codexSignedOut, claudeSignedOut, claudeExpired
 
     public var message: String {
         switch self {
-        case .helperMissing: "Le lecteur intégré est absent. Reconstruis ou réinstalle QuotaBar."
         case .timeout: "La lecture a pris trop de temps. Réessaie au prochain refresh."
         case .cancelled: "Lecture interrompue."
-        case .multipleAccounts: "Plusieurs comptes sont renvoyés. Impossible de choisir un quota sans ambiguïté."
-        case .unsupportedSource: "Cette source ne convient pas au mode léger."
-        case .unavailable, .helperFailed: "Quotas indisponibles. Vérifie ta connexion dans Codex ou sur claude.ai, puis actualise."
-        case .invalidResponse, .oversizedOutput: "La réponse du lecteur de quotas est invalide."
+        case .codexMissing: "Codex est introuvable sur ce Mac. Installe l’app ChatGPT et connecte Codex."
+        case .codexSignedOut: "Connecte-toi à Codex sur ce Mac, puis actualise."
+        case .claudeSignedOut: "Connecte-toi à Claude Code sur ce Mac, puis actualise."
+        case .claudeExpired: "Connexion Claude Code expirée. Ouvre Claude Code pour la renouveler, puis actualise."
+        case .unavailable, .helperFailed: "Quotas indisponibles pour le moment. Réessaie au prochain refresh."
+        case .invalidResponse, .oversizedOutput: "La réponse reçue est invalide."
         }
     }
 }
 
-/// Decodes quota fields and the display email. Raw errors, credits and cached web extras are discarded.
+/// Turns the official Codex and Claude answers into rows. Everything else in them is discarded.
 public enum QuotaDecoder {
-    public static func decode(_ data: Data, for provider: Provider, now: Date = Date()) throws -> QuotaSnapshot {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let value = try decoder.singleValueContainer().decode(String.self)
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = formatter.date(from: value) { return date }
-            formatter.formatOptions = [.withInternetDateTime]
-            guard let date = formatter.date(from: value) else { throw QuotaError.invalidResponse }
-            return date
-        }
-        let all: [Payload]
-        do { all = try decoder.decode([Payload].self, from: data) }
-        catch { throw QuotaError.invalidResponse }
-        let matching = all.filter { $0.provider == provider.rawValue }
-        guard matching.count <= 1 else { throw QuotaError.multipleAccounts }
-        guard let payload = matching.first, payload.error == nil, let usage = payload.usage else {
-            throw QuotaError.unavailable
-        }
-        // Claude's web strategy is direct HTTP. Codex's web strategy runs a WebView and is forbidden here.
-        guard payload.source == (provider == .claude ? "web" : "oauth") else { throw QuotaError.unsupportedSource }
-        guard usage.identity?.providerID.map({ $0 == provider.rawValue }) ?? true else {
-            throw QuotaError.invalidResponse
-        }
-        guard [nil, "exact", "percentOnly"].contains(usage.dataConfidence),
-              now.timeIntervalSince(usage.updatedAt) <= 16 * 60,
-              usage.updatedAt.timeIntervalSince(now) < 60 else { throw QuotaError.unavailable }
+    /// `account` and `limits` are the results of `account/read` and `account/rateLimits/read` from `codex app-server`.
+    public static func codex(account: Data, limits: Data, now: Date = Date()) throws -> QuotaSnapshot {
+        let account = try decode(CodexAccount.self, account)
+        guard let identity = account.account else { throw QuotaError.codexSignedOut }
+        let limits = try decode(CodexLimits.self, limits).rateLimits
         var rows: [QuotaRow] = []
-        for (id, window, label) in [
-            ("primary", usage.primary, payload.rateWindowLabels?.primary),
-            ("secondary", usage.secondary, payload.rateWindowLabels?.secondary),
-            ("tertiary", usage.tertiary, payload.rateWindowLabels?.tertiary),
-        ] {
-            guard let window, window.isSyntheticPlaceholder != true else { continue }
-            let isWeekly = id != "tertiary" && (window.windowMinutes == 10080 ||
-                (window.windowMinutes == nil && id == "secondary"))
-            let title = isWeekly ? "Hebdomadaire" :
-                (window.windowMinutes == 300 ? "Session · 5 heures" : (label ?? "Limite supplémentaire"))
-            rows.append(try window.row(id: id, title: title, isWeekly: isWeekly))
+        for (id, window) in [("primary", limits?.primary), ("secondary", limits?.secondary)] {
+            guard let window else { continue }
+            let minutes = window.windowDurationMins
+            rows.append(try row(id: id, used: window.usedPercent, minutes: minutes,
+                                resetsAt: window.resetsAt.map { Date(timeIntervalSince1970: $0) }))
         }
-        for extra in usage.extraRateWindows ?? [] {
-            guard extra.window.isSyntheticPlaceholder != true else { continue }
-            rows.append(try extra.window.row(id: "extra-" + extra.id, title: extra.title,
-                                             isWeekly: false, usageKnown: extra.usageKnown != false))
+        return try snapshot(.codex, rows: rows, label: identity.email, now: now)
+    }
+
+    /// `usage` and `profile` are the answers of Claude's `/api/oauth/usage` and `/api/oauth/profile`.
+    public static func claude(usage: Data, profile: Data?, now: Date = Date()) throws -> QuotaSnapshot {
+        let usage = try decode(ClaudeUsagePayload.self, usage)
+        var rows: [QuotaRow] = []
+        for (id, window, minutes, title) in [
+            ("five_hour", usage.five_hour, 300, nil), ("seven_day", usage.seven_day, 10080, nil),
+            ("seven_day_opus", usage.seven_day_opus, nil, "Opus · hebdomadaire"),
+            ("seven_day_sonnet", usage.seven_day_sonnet, nil, "Sonnet · hebdomadaire"),
+        ] as [(String, ClaudeWindow?, Int?, String?)] {
+            guard let window else { continue }
+            rows.append(try row(id: id, used: window.utilization, minutes: minutes,
+                                resetsAt: window.resets_at.flatMap(parseDate), title: title))
         }
-        guard !rows.isEmpty, rows.count <= 30, Set(rows.map(\.id)).count == rows.count else {
-            throw QuotaError.unavailable
-        }
-        let label = (usage.identity?.accountEmail ?? usage.accountEmail)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return QuotaSnapshot(provider: provider, rows: rows, measuredAt: usage.updatedAt,
+        let email = profile.flatMap { try? JSONDecoder().decode(ClaudeProfile.self, from: $0) }?.account?.email
+        return try snapshot(.claude, rows: rows, label: email, now: now)
+    }
+
+    private static func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
+        do { return try JSONDecoder().decode(type, from: data) } catch { throw QuotaError.invalidResponse }
+    }
+
+    private static func row(id: String, used: Double?, minutes: Int?, resetsAt: Date?, title: String? = nil) throws -> QuotaRow {
+        if let used, !used.isFinite || used < 0 { throw QuotaError.invalidResponse }
+        let isWeekly = minutes == 10080
+        let title = title ?? (isWeekly ? "Hebdomadaire" : minutes == 300 ? "Session · 5 heures" : "Limite supplémentaire")
+        return QuotaRow(id: id, title: title, remaining: used.map { max(0, 100 - $0) },
+                        resetsAt: resetsAt, isWeekly: isWeekly)
+    }
+
+    private static func snapshot(_ provider: Provider, rows: [QuotaRow], label: String?, now: Date) throws -> QuotaSnapshot {
+        guard !rows.isEmpty else { throw QuotaError.unavailable }
+        let label = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return QuotaSnapshot(provider: provider, rows: rows, measuredAt: now,
                              accountLabel: label.flatMap { $0.isEmpty ? nil : String($0.prefix(100)) })
     }
-}
 
-private struct Payload: Decodable {
-    let provider: String
-    let source: String?
-    let usage: Usage?
-    let rateWindowLabels: Labels?
-    let error: Failure?
-    struct Failure: Decodable { let code: Int? }
-}
-private struct Labels: Decodable { let primary: String?; let secondary: String?; let tertiary: String? }
-private struct Usage: Decodable {
-    let primary: Window?; let secondary: Window?; let tertiary: Window?
-    let extraRateWindows: [Extra]?
-    let updatedAt: Date
-    let dataConfidence: String?
-    let identity: Identity?
-    let accountEmail: String?
-}
-private struct Identity: Decodable { let providerID: String?; let accountEmail: String? }
-private struct Extra: Decodable { let id: String; let title: String; let window: Window; let usageKnown: Bool? }
-private struct Window: Decodable {
-    let usedPercent: Double?
-    let windowMinutes: Int?
-    let resetsAt: Date?
-    let resetDescription: String?
-    let isSyntheticPlaceholder: Bool?
-
-    func row(id: String, title: String, isWeekly: Bool, usageKnown: Bool = true) throws -> QuotaRow {
-        if let usedPercent, (!usedPercent.isFinite || usedPercent < 0) { throw QuotaError.invalidResponse }
-        let remaining = usageKnown ? usedPercent.map { max(0, 100 - $0) } : nil
-        return QuotaRow(id: id, title: String(title.prefix(80)), remaining: remaining,
-                        resetsAt: resetsAt, resetDescription: resetDescription.map { String($0.prefix(120)) },
-                        isWeekly: isWeekly)
+    private static func parseDate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
     }
+}
+
+private struct CodexAccount: Decodable {
+    let account: Identity?
+    struct Identity: Decodable { let email: String? }
+}
+private struct CodexLimits: Decodable {
+    let rateLimits: Limits?
+    struct Limits: Decodable { let primary: Window?; let secondary: Window? }
+    struct Window: Decodable { let usedPercent: Double?; let windowDurationMins: Int?; let resetsAt: Double? }
+}
+private struct ClaudeUsagePayload: Decodable {
+    let five_hour: ClaudeWindow?; let seven_day: ClaudeWindow?
+    let seven_day_opus: ClaudeWindow?; let seven_day_sonnet: ClaudeWindow?
+}
+private struct ClaudeWindow: Decodable { let utilization: Double?; let resets_at: String? }
+private struct ClaudeProfile: Decodable {
+    let account: Account?
+    struct Account: Decodable { let email: String? }
 }
