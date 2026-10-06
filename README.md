@@ -16,13 +16,21 @@ QuotaBar fonctionne sur macOS 14 ou plus récent, sur Mac Intel et Apple Silicon
 
 Le premier écran permet de vérifier les connexions, puis d’utiliser l’app même si une seule IA est disponible. La vérification peut aussi être relancée depuis les réglages. Une connexion Codex locale et une session claude.ai dans un navigateur pris en charge par le lecteur restent nécessaires. Une connexion au site ChatGPT seule, ou à Claude Code seul, ne suffit pas. La source Codex du lecteur figé utilise le fichier de connexion local par défaut ; une session stockée uniquement dans le trousseau ou dans un dossier Codex personnalisé peut ne pas être détectée.
 
+Pour Claude dans Chrome, Brave ou un autre navigateur Chromium, le lecteur doit pouvoir lire la clé de chiffrement des cookies de ce navigateur dans le trousseau macOS. Il ne demande jamais cette autorisation en arrière-plan : sans elle, Claude reste indisponible. Pour l’accorder une fois, depuis Terminal :
+
+```sh
+~/Applications/QuotaBar.app/Contents/Helpers/CodexBarCLI cookie refresh --provider claude --allow-keychain-prompt
+```
+
+macOS demande alors l’accès à l’élément « Safe Storage » du navigateur. Vérifiez que la demande vient de `CodexBarCLI` avant de l’accepter. La commande n’affiche aucune valeur de cookie.
+
 Le build actuel utilise une signature locale, sans validation Apple. macOS peut donc bloquer une app téléchargée. Consultez l’[aide Apple sur l’ouverture d’une app hors App Store](https://support.apple.com/fr-fr/102445) avant de décider de l’autoriser. QuotaBar ne modifie pas les protections du Mac.
 
 ## Prérequis pour compiler
 
 - macOS 14 ou plus récent.
 - Les outils en ligne de commande Apple, avec Swift 6.
-- Une connexion internet au premier build pour télécharger le lecteur officiel figé en version 0.52.0.
+- Une connexion internet au premier build pour télécharger le lecteur officiel figé en version 0.72.0.
 
 CodexBar.app n’a pas besoin d’être installé. QuotaBar contient son propre exemplaire du lecteur open source CodexBarCLI et de ses ressources. Le build les extrait d’une archive officielle dont le SHA-256 est figé, vérifie la signature du lecteur et conserve celle-ci. Il ne copie rien depuis une installation locale de CodexBar.
 
@@ -119,4 +127,4 @@ Une évolution des formats ou de l’authentification chez les fournisseurs peut
 
 ## Provenance
 
-Les deux logos proviennent de [CodexBar](https://github.com/steipete/CodexBar/tree/03f4b68881930269793320d68776fd5f4f76d453), commit `03f4b68881930269793320d68776fd5f4f76d453`. Le lecteur provient de la [release officielle 0.52.0](https://github.com/steipete/CodexBar/releases/tag/v0.52.0). Sa signature d’origine et la [licence MIT](Sources/QuotaBar/Resources/CodexBar-LICENSE.txt) sont conservées. Les empreintes et le contenu embarqué sont détaillés dans [Reader-Provenance.txt](Sources/QuotaBar/Resources/Reader-Provenance.txt). Le reste du code de QuotaBar est propre à ce projet.
+Les deux logos proviennent de [CodexBar](https://github.com/steipete/CodexBar/tree/03f4b68881930269793320d68776fd5f4f76d453), commit `03f4b68881930269793320d68776fd5f4f76d453`. Le lecteur provient de la [release officielle 0.72.0](https://github.com/steipete/CodexBar/releases/tag/v0.72.0). Sa signature d’origine et la [licence MIT](Sources/QuotaBar/Resources/CodexBar-LICENSE.txt) sont conservées. Les empreintes et le contenu embarqué sont détaillés dans [Reader-Provenance.txt](Sources/QuotaBar/Resources/Reader-Provenance.txt). Le reste du code de QuotaBar est propre à ce projet.
