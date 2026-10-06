@@ -107,6 +107,41 @@ private func fakeServer(_ body: String) throws -> (URL, URL) {
     return (folder, server)
 }
 
+/// Codex installed with npm starts through `#!/usr/bin/env node`: the folder next to it must be on PATH.
+@MainActor func codexFromAScriptFindsItsInterpreterNextToIt() async throws {
+    let (folder, server) = try fakeServer("exec quota-fake-node \"$@\"\n")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let node = folder.appendingPathComponent("quota-fake-node")
+    try Data(#"""
+    #!/bin/sh
+    while read -r line; do case "$line" in
+      *'"id":2'*) echo '{"id":2,"result":{"account":{"email":"example@example.test"}}}' ;;
+      *'"id":3'*) echo '{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":1,"windowDurationMins":10080}}}}' ;;
+    esac; done
+    """#.utf8).write(to: node)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+    let value = try await QuotaReader(codexPath: server.path).fetch(.codex)
+    expect(value.weekly?.remaining == 99)
+}
+
+/// Cancelling at any moment of startup neither crashes QuotaBar nor leaves a server running.
+@MainActor func cancellingDuringStartupLeavesNothingBehind() async throws {
+    let (folder, server) = try fakeServer("echo $$ >> \"$(dirname \"$0\")/pids\"\nexec cat > /dev/null\n")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    for attempt in 0..<40 {
+        let task = Task { try await CodexAppServer.request(path: server.path, timeout: 30) }
+        if attempt % 2 == 1 { try await Task.sleep(for: .milliseconds(attempt * 3)) }
+        task.cancel()
+        _ = try? await task.value
+    }
+    let pids = ((try? String(contentsOf: folder.appendingPathComponent("pids"), encoding: .utf8)) ?? "")
+        .split(separator: "\n").compactMap { Int32($0) }
+    expect(!pids.isEmpty) // some attempts really launched a server
+    let deadline = Date().addingTimeInterval(4)
+    while pids.contains(where: { kill($0, 0) == 0 }), Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+    expect(!pids.contains(where: { kill($0, 0) == 0 }))
+}
+
 @MainActor func codexServerKeepsStdinOpenUntilBothAnswers() async throws {
     let (folder, server) = try fakeServer(#"""
     while read -r line; do
@@ -142,10 +177,22 @@ private func fakeServer(_ body: String) throws -> (URL, URL) {
     defer { try? FileManager.default.removeItem(at: earlyFolder) }
     await expectThrows(QuotaError.unavailable) { try await CodexAppServer.request(path: early.path, timeout: 5) }
     let (signedOutFolder, signedOut) = try fakeServer(#"""
-    while read -r line; do case "$line" in *'"id":2'*) echo '{"id":2,"error":{"code":-32600}}' ;; esac; done
+    while read -r line; do case "$line" in
+      *'"id":2'*) echo '{"id":2,"error":{"code":-32600}}' ;;
+      *'"id":3'*) echo '{"id":3,"error":{"code":-32600}}' ;;
+    esac; done
     """#)
     defer { try? FileManager.default.removeItem(at: signedOutFolder) }
     await expectThrows(QuotaError.codexSignedOut) { try await CodexAppServer.request(path: signedOut.path, timeout: 5) }
+    // A null account with a failing limits request is still "signed out"; a null result must not crash.
+    let (nullFolder, nullServer) = try fakeServer(#"""
+    while read -r line; do case "$line" in
+      *'"id":2'*) echo '{"id":2,"result":{"account":null}}' ;;
+      *'"id":3'*) echo '{"id":3,"result":null}' ;;
+    esac; done
+    """#)
+    defer { try? FileManager.default.removeItem(at: nullFolder) }
+    await expectThrows(QuotaError.codexSignedOut) { try await QuotaReader(codexPath: nullServer.path).fetch(.codex) }
     let task = Task { try await CodexAppServer.request(path: silent.path, timeout: 30) }
     try await Task.sleep(for: .milliseconds(100))
     task.cancel()
@@ -346,6 +393,8 @@ static func main() async {
         try staleFailedAndResetSnapshotsNeverLookFreshInTheBar()
         try await codexServerKeepsStdinOpenUntilBothAnswers()
         try await codexServerFailuresAreBounded()
+        try await codexFromAScriptFindsItsInterpreterNextToIt()
+        try await cancellingDuringStartupLeavesNothingBehind()
         automaticQuarterHourAndPanelAlwaysForcesFreshRead()
         refreshModesPreserveExplicitActionsAndReconfigureTimers()
         sleepAndWakeDoNotCatchUpMissedRefreshes()

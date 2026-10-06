@@ -79,21 +79,24 @@ public struct QuotaReader: Sendable {
 }
 
 // Inherited API keys, tokens, proxy overrides and verbose logging are deliberately left out.
-private let childEnvironment = [
-    "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-    "USER": NSUserName(), "TMPDIR": NSTemporaryDirectory(),
-    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8",
-]
+private func childEnvironment(adding folder: String? = nil) -> [String: String] {
+    // Codex installed with npm is a `node` script, so its own folder and Homebrew's stay reachable.
+    let path = ([folder].compactMap { $0 } + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"])
+    return [
+        "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
+        "USER": NSUserName(), "TMPDIR": NSTemporaryDirectory(),
+        "PATH": path.joined(separator: ":"), "LANG": "en_US.UTF-8",
+    ]
+}
 
 /// Talks JSON-RPC to `codex app-server` over stdio. Its stdin stays open until both answers arrive:
 /// on end of input the server stops answering. Then stdin closes and the server exits by itself.
 public enum CodexAppServer {
-    public static func request(path: String, timeout: TimeInterval = 30,
-                               environment: [String: String]? = nil) async throws -> (account: Data, limits: Data) {
+    public static func request(path: String, timeout: TimeInterval = 30) async throws -> (account: Data, limits: Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = ["app-server"]
-        process.environment = environment ?? childEnvironment
+        process.environment = childEnvironment(adding: URL(fileURLWithPath: path).deletingLastPathComponent().path)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -104,36 +107,45 @@ public enum CodexAppServer {
                 exchange.start(continuation: continuation, timeout: timeout)
             }
         } onCancel: { exchange.finish(.failure(QuotaError.cancelled)) }
-        guard let account = answers[2], let limits = answers[3] else { throw QuotaError.invalidResponse }
-        return (account, limits)
+        // A failed request leaves its answer out; the decoder then tells signed out from unavailable.
+        guard let account = answers[2] else { throw QuotaError.codexSignedOut }
+        return (account, answers[3] ?? Data(#"{"rateLimits":null}"#.utf8))
     }
 
+    /// Every step that touches the process or its pipes runs under `lock`, so a cancellation
+    /// can never interleave with startup. `finished` is checked before each of those steps.
     private final class Exchange: @unchecked Sendable {
         private let lock = NSLock()
         private let process: Process, input: Pipe, output: Pipe
         private var continuation: CheckedContinuation<[Int: Data], Error>?
-        private var buffer = Data(), answers: [Int: Data] = [:], finished = false
+        private var buffer = Data(), answers: [Int: Data] = [:], answered = Set<Int>(), finished = false
 
-        init(process: Process, input: Pipe, output: Pipe) { self.process = process; self.input = input; self.output = output }
+        init(process: Process, input: Pipe, output: Pipe) {
+            self.process = process; self.input = input; self.output = output
+            // A server that exits early must not kill QuotaBar with SIGPIPE on the next write.
+            _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+        }
 
         func start(continuation: CheckedContinuation<[Int: Data], Error>, timeout: TimeInterval) {
             lock.lock()
-            if finished { lock.unlock(); continuation.resume(throwing: QuotaError.cancelled); return }
+            guard !finished else { lock.unlock(); continuation.resume(throwing: QuotaError.cancelled); return }
             self.continuation = continuation
-            lock.unlock()
             // Cleared in finish(), which breaks this cycle.
             output.fileHandleForReading.readabilityHandler = { handle in self.receive(handle.availableData) }
-            // A server that exits early must not kill QuotaBar with SIGPIPE on the next write.
-            _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
-            do { try process.run() } catch { finish(.failure(QuotaError.helperFailed)); return }
             let requests = [
                 #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"quotabar","version":"1"}}}"#,
                 #"{"jsonrpc":"2.0","method":"initialized"}"#,
                 #"{"jsonrpc":"2.0","id":2,"method":"account/read","params":{"refreshToken":false}}"#,
                 #"{"jsonrpc":"2.0","id":3,"method":"account/rateLimits/read"}"#,
             ].joined(separator: "\n") + "\n"
-            do { try input.fileHandleForWriting.write(contentsOf: Data(requests.utf8)) }
-            catch { finish(.failure(QuotaError.helperFailed)); return }
+            var failure: QuotaError?
+            do {
+                try process.run()
+                // A few hundred bytes: the pipe buffer takes them without blocking.
+                try input.fileHandleForWriting.write(contentsOf: Data(requests.utf8))
+            } catch { failure = .helperFailed }
+            lock.unlock()
+            if let failure { finish(.failure(failure)); return }
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
                 self?.finish(.failure(QuotaError.timeout))
             }
@@ -142,21 +154,24 @@ public enum CodexAppServer {
         private func receive(_ data: Data) {
             guard !data.isEmpty else { finish(.failure(QuotaError.unavailable)); return } // server exited early
             lock.lock()
+            guard !finished else { lock.unlock(); return }
             buffer.append(data)
             if buffer.count > 1_048_576 { lock.unlock(); finish(.failure(QuotaError.oversizedOutput)); return }
-            var failure: QuotaError?
             while let newline = buffer.firstIndex(of: 0x0A) {
                 let line = buffer[buffer.startIndex..<newline]
                 buffer.removeSubrange(buffer.startIndex...newline)
                 guard let message = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                       let id = message["id"] as? Int, id == 2 || id == 3 else { continue }
-                if let result = message["result"], let data = try? JSONSerialization.data(withJSONObject: result) {
+                answered.insert(id)
+                // An error, a null or a bare value is no answer; isValidJSONObject avoids an uncatchable exception.
+                if let result = message["result"], JSONSerialization.isValidJSONObject(result),
+                   let data = try? JSONSerialization.data(withJSONObject: result) {
                     answers[id] = data
-                } else { failure = id == 2 ? .codexSignedOut : .unavailable }
+                }
             }
-            let complete = answers.count == 2 ? answers : nil
+            let complete = answered.count == 2 ? answers : nil
             lock.unlock()
-            if let failure { finish(.failure(failure)) } else if let complete { finish(.success(complete)) }
+            if let complete { finish(.success(complete)) }
         }
 
         func finish(_ result: Result<[Int: Data], Error>) {
@@ -164,14 +179,17 @@ public enum CodexAppServer {
             guard !finished else { lock.unlock(); return }
             finished = true
             let continuation = self.continuation; self.continuation = nil
-            lock.unlock()
             output.fileHandleForReading.readabilityHandler = nil
             try? input.fileHandleForWriting.close()
-            if process.isRunning {
+            let running = process.isRunning
+            lock.unlock()
+            if running {
                 let process = self.process
-                // A clean exit follows the closed stdin; anything still running after that is stopped.
-                DispatchQueue.global().asyncAfter(deadline: .now() + 2) { if process.isRunning { process.terminate() } }
                 if case .failure = result { process.terminate() }
+                // A clean exit follows the closed stdin; anything still running after that is killed.
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                }
             }
             continuation?.resume(with: result)
         }
@@ -184,7 +202,7 @@ enum ClaudeUsage {
     static func fetch() async throws -> QuotaSnapshot {
         let result = try await BoundedProcess.run(path: "/usr/bin/security", arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w",
-        ], environment: childEnvironment, timeout: 20, capacity: 65_536)
+        ], environment: childEnvironment(), timeout: 20, capacity: 65_536)
         guard result.exitStatus == 0 else { throw QuotaError.claudeSignedOut }
         guard let stored = try? JSONDecoder().decode(Stored.self, from: result.data), let login = stored.claudeAiOauth,
               let token = login.accessToken, !token.isEmpty else { throw QuotaError.claudeSignedOut }

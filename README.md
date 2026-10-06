@@ -19,7 +19,7 @@ Le premier écran permet de vérifier les connexions, puis d’utiliser l’app 
 - pour OpenAI, Codex connecté sur ce Mac (il est inclus dans l’app ChatGPT). Une connexion au site ChatGPT seule ne suffit pas ;
 - pour Claude, Claude Code connecté sur ce Mac. Une connexion au site claude.ai seule ne suffit pas.
 
-QuotaBar ne demande aucune clé API ni autorisation du trousseau macOS.
+QuotaBar ne demande aucune clé API. Elle lit la connexion de Claude Code dans le trousseau avec l’outil Apple `security` ; sur le Mac de développement, macOS n’a demandé aucune autorisation pour cela. Si une fenêtre du trousseau apparaît, vérifiez qu’elle vient de `security` avant de l’accepter.
 
 Le build actuel utilise une signature locale, sans validation Apple. macOS peut donc bloquer une app téléchargée. Consultez l’[aide Apple sur l’ouverture d’une app hors App Store](https://support.apple.com/fr-fr/102445) avant de décider de l’autoriser. QuotaBar ne modifie pas les protections du Mac.
 
@@ -79,7 +79,7 @@ Cette commande affiche uniquement le pourcentage hebdomadaire, le nombre de limi
 
 ## Réduire le travail de fond
 
-L’interface repose sur AppKit et SwiftUI. Elle ne lance ni navigateur caché, serveur, télémétrie, scan de conversations, mise à jour automatique ni animation continue. Un seul minuteur non répétitif déclenche le prochain refresh. Les états du panneau se recalculent à l’ouverture, à la réception des données et à l’expiration locale d’une mesure.
+L’interface repose sur AppKit et SwiftUI. Elle ne lance ni navigateur caché, serveur permanent, télémétrie, scan de conversations, mise à jour automatique ni animation continue. Un seul minuteur non répétitif déclenche le prochain refresh. Les états du panneau se recalculent à l’ouverture, à la réception des données et à l’expiration locale d’une mesure.
 
 Chaque refresh lit les fournisseurs sélectionnés, en parallèle :
 
@@ -98,7 +98,7 @@ Les pourcentages représentent la part restante par défaut, ou la part consomm�
 
 La pastille du rythme projette la consommation jusqu’au reset, en supposant que le rythme horaire observé continue sans interruption. Vert (« Marge confortable ») : plus de 20 % du quota actuellement restant sera encore disponible. Jaune (« Marge faible ») : de 0 à 20 %. Rouge (« Surconsommation ») : la consommation projetée dépasse le quota restant. Un quota déjà nul indique « Quota épuisé ». Le calcul utilise toujours la part restante, quel que soit le mode d’affichage. Les estimations exigent au moins deux intervalles totalisant 30 minutes. Sans mesures suffisantes, la ligne reste neutre ; un rythme nul indique « Aucune conso observée », sans prédire l’avenir. Les mesures anciennes ou en erreur ne donnent pas de prévision. La projection utilise le rythme mesuré sur les intervalles observés des 7 derniers jours, sans compter les périodes de veille comme du temps sans consommation. Elle ne connaît pas les futurs horaires d’utilisation.
 
-Les fenêtres supplémentaires effectivement renvoyées par chaque source sont affichées.
+Sont affichées : pour OpenAI, les deux fenêtres renvoyées par Codex ; pour Claude, la session de 5 heures, la semaine et les limites hebdomadaires Opus et Sonnet lorsqu’elles existent. Les autres champs des réponses sont ignorés.
 
 ## Données et maintenance
 
