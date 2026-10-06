@@ -36,22 +36,16 @@ public struct RefreshPolicy: Sendable {
     public private(set) var nextAutomatic: Date?
     public private(set) var running = false
     public private(set) var asleep = false
-    public private(set) var readsAuthorized = true
     public init(mode: RefreshMode = .fifteenMinutes) { self.mode = mode }
 
     public mutating func setMode(_ mode: RefreshMode, now: Date) {
         self.mode = mode
-        nextAutomatic = readsAuthorized ? mode.interval.map { now.addingTimeInterval($0) } : nil
-    }
-
-    public mutating func setReadAuthorization(_ authorized: Bool) {
-        readsAuthorized = authorized
-        if !authorized { nextAutomatic = nil }
+        nextAutomatic = mode.interval.map { now.addingTimeInterval($0) }
     }
 
     public mutating func begin(now: Date, force: Bool) -> Bool {
         let automaticDue = mode.interval != nil && (nextAutomatic.map { now >= $0 } ?? true)
-        guard readsAuthorized, !asleep, !running, force || automaticDue else { return false }
+        guard !asleep, !running, force || automaticDue else { return false }
         running = true
         nextAutomatic = mode.interval.map { now.addingTimeInterval($0) }
         return true

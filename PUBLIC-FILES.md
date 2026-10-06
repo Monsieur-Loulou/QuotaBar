@@ -2,7 +2,7 @@
 
 Ce dépôt contient les sources de QuotaBar 0.3.0 (build 11), les tests, les scripts de build et les notices de licence. Aucun binaire ne fait partie de cet inventaire.
 
-Les données de compte, l’historique local, les instructions de travail privées, et les builds sont exclus. `LICENSE` s’applique au code propre à QuotaBar ; la notice des logos reste conservée dans les ressources.
+Les données de compte, l’historique local, les instructions de travail privées, et les builds sont exclus. `LICENSE` s’applique au code de QuotaBar.
 
 ## Inventaire
 
@@ -18,7 +18,6 @@ Sources/ProcessSupport/include/ProcessSupport.h
 Sources/QuotaBar/AppModel.swift
 Sources/QuotaBar/MenuBarIcon.swift
 Sources/QuotaBar/Panel.swift
-Sources/QuotaBar/Resources/CodexBar-LICENSE.txt
 Sources/QuotaBar/Resources/claude.svg
 Sources/QuotaBar/Resources/codex.svg
 Sources/QuotaBar/StatusPanel.swift

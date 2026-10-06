@@ -10,11 +10,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var refreshing = false
     @Published private(set) var displayDate = Date()
     @Published var settingsVisible = false
-    @Published private(set) var setupVisible = false
-    @Published private(set) var setupCheckStarted = false
-    @Published private(set) var setupCheckedProviders = Set<Provider>()
-    var needsInitialSetup: Bool { !demo && !UserDefaults.standard.bool(forKey: "quotaSetupCompleted") }
-    var onSetupFinished: (() -> Void)?
     @Published var displayMode: QuotaDisplayMode = .remaining {
         didSet {
             if !demo { UserDefaults.standard.set(displayMode.rawValue, forKey: "quotaDisplayMode") }
@@ -79,68 +74,21 @@ final class AppModel: ObservableObject {
             policy.setMode(refreshMode, now: Date())
             let disabled = Set(UserDefaults.standard.stringArray(forKey: "quotaDisabledProviders") ?? [])
             enabledProviders = Set(Provider.allCases.filter { !disabled.contains($0.rawValue) })
-            setupVisible = needsInitialSetup
-            policy.setReadAuthorization(!setupVisible)
             loadTrendHistory()
         }
     }
 
     func start() { if !demo { refresh(force: true) } }
 
-    func showSetup() {
-        sleep()
-        policy.wake()
-        policy.setReadAuthorization(false)
-        setupCheckStarted = false
-        setupCheckedProviders.removeAll()
-        setupVisible = true
-        settingsVisible = false
-        onChange?()
-    }
-
-    func checkSetup() {
-        guard !refreshing else { return }
-        setupCheckedProviders.removeAll()
-        setupCheckStarted = true
-        policy.setReadAuthorization(true)
-        refresh(force: true)
-        onChange?()
-    }
-
-    func finishSetup(later: Bool = false) {
-        if later {
-            sleep()
-            policy.wake()
-            policy.setReadAuthorization(false)
-        } else {
-            // Completing setup always follows an explicit check, even if no quota was available.
-            guard setupCheckStarted, !refreshing else { return }
-            if !demo { UserDefaults.standard.set(true, forKey: "quotaSetupCompleted") }
-        }
-        setupVisible = false
-        schedule()
-        onSetupFinished?()
-        onChange?()
-    }
-
-    func openSetupHelp(_ provider: Provider) {
-        let address = provider == .codex ? "https://developers.openai.com/codex/auth/" : "https://code.claude.com/docs/en/quickstart"
-        if let url = URL(string: address) { NSWorkspace.shared.open(url) }
-    }
-
     func panelOpened() {
         displayDate = Date()
         refreshLoginStatus()
-        if !demo, !setupVisible, !needsInitialSetup {
-            policy.setReadAuthorization(true)
-            refresh(force: true)
-        }
+        if !demo { refresh(force: true) }
         onChange?()
     }
 
     func refresh(force: Bool) {
-        guard !setupVisible || (setupCheckStarted && force),
-              !selectedProviders.isEmpty, !demo, policy.begin(now: Date(), force: force) else { return }
+        guard !selectedProviders.isEmpty, !demo, policy.begin(now: Date(), force: force) else { return }
         timer?.invalidate(); timer = nil
         refreshing = true
         displayDate = Date()
@@ -166,7 +114,6 @@ final class AppModel: ObservableObject {
                         self.trendHistory.interrupt(provider)
                         self.errors[provider] = error
                     }
-                    if self.setupVisible { self.setupCheckedProviders.insert(provider) }
                     self.displayDate = Date()
                     self.onChange?()
                 }
@@ -189,7 +136,7 @@ final class AppModel: ObservableObject {
 
     private func schedule() {
         timer?.invalidate(); timer = nil
-        guard !demo, !setupVisible, policy.readsAuthorized, !selectedProviders.isEmpty, !policy.asleep, !refreshing else { return }
+        guard !demo, !selectedProviders.isEmpty, !policy.asleep, !refreshing else { return }
         let now = Date()
         // A local expiry event clears old menu values, including in on-open mode. It does not force a read.
         let expirations = snapshots.compactMap { provider, snapshot -> Date? in
@@ -283,14 +230,8 @@ final class AppModel: ObservableObject {
     }
 
     private func loadDemo(scenario: String) {
-        if scenario.hasPrefix("setup") {
-            setupVisible = true
-            setupCheckStarted = scenario != "setup"
-            if setupCheckStarted { setupCheckedProviders = Set(Provider.allCases) }
-            if scenario == "setup" { return }
-        }
         if scenario == "loading" { return }
-        if scenario == "error" || scenario == "setup-error" {
+        if scenario == "error" {
             errors[.codex] = .unavailable
             errors[.claude] = .timeout
             return

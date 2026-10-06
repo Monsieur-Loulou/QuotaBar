@@ -43,31 +43,18 @@ struct Panel: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text(model.setupVisible ? "Bienvenue dans QuotaBar" : model.settingsVisible ? "Réglages" : "QuotaBar")
+                Text(model.settingsVisible ? "Réglages" : "QuotaBar")
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 if model.demo { Text("DÉMO").font(.system(size: 9, weight: .semibold)).foregroundStyle(.orange) }
                 if model.refreshing {
                     Text("Actualisation…").font(.system(size: 10)).foregroundStyle(.secondary)
-                } else if !model.settingsVisible && !model.setupVisible {
+                } else if !model.settingsVisible {
                     Text(model.displayMode.title).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
                 }
             }
-            if model.setupVisible { setup } else if model.settingsVisible { settings } else { quotas }
+            if model.settingsVisible { settings } else { quotas }
             Divider()
-            if model.setupVisible {
-                HStack(spacing: 12) {
-                    Button("Plus tard") { model.finishSetup(later: true) }.buttonStyle(.plain).foregroundStyle(.secondary)
-                    Button("Quitter") { NSApp.terminate(nil) }.buttonStyle(.plain).foregroundStyle(.secondary)
-                    Spacer()
-                    if model.setupCheckStarted {
-                        Button("Utiliser QuotaBar") { model.finishSetup() }.disabled(model.refreshing)
-                            .keyboardShortcut(.defaultAction)
-                    } else {
-                        Button("Vérifier les connexions") { model.checkSetup() }.keyboardShortcut(.defaultAction)
-                    }
-                }.font(.system(size: 11))
-            } else {
             HStack(spacing: 16) {
                 Button {
                     model.settingsVisible.toggle()
@@ -83,57 +70,10 @@ struct Panel: View {
                 Button("Quitter") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
-            }
         }
         .padding(14)
         .frame(width: width)
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var setup: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Tes quotas, avec les comptes que tu utilises déjà.")
-                .font(.system(size: 12, weight: .medium))
-            Text("QuotaBar utilise les connexions de Codex et de Claude Code sur ce Mac. Aucune clé API à saisir.")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-            ForEach(Provider.allCases, id: \.self) { provider in
-                let ink = Brand.ink(provider, dark: colorScheme == .dark)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 7) {
-                        Image(nsImage: Brand.image(provider)).resizable().frame(width: 19, height: 19).foregroundStyle(ink)
-                        Text(provider.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                        Spacer()
-                        if model.setupCheckStarted {
-                            let enabled = model.enabledProviders.contains(provider)
-                            let available = enabled && model.setupCheckedProviders.contains(provider) && model.errors[provider] == nil && model.snapshots[provider] != nil
-                            Label(!enabled ? "Désactivé" : model.refreshing ? "Vérification…" : available ? "Disponible" : "À vérifier",
-                                  systemImage: !enabled ? "minus.circle" : model.refreshing ? "ellipsis" : available ? "checkmark.circle" : "exclamationmark.circle")
-                                .font(.system(size: 10)).foregroundStyle(available ? ink : .secondary)
-                        }
-                    }
-                    Text(provider == .codex ? "Connecte-toi à Codex sur ce Mac. La connexion au site ChatGPT seule ne suffit pas." : "Connecte-toi à Claude Code sur ce Mac. La connexion au site claude.ai seule ne suffit pas.")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                    if model.setupCheckStarted, !model.refreshing, let error = model.errors[provider] {
-                        Text(error.message).font(.system(size: 10)).foregroundStyle(.orange)
-                    }
-                    HStack {
-                        Button("Aide pour se connecter") { model.openSetupHelp(provider) }
-                            .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundStyle(ink)
-                        Spacer()
-                    }
-                }.padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Brand.color(provider).opacity(colorScheme == .dark ? 0.12 : 0.07), in: RoundedRectangle(cornerRadius: 10))
-            }
-            Text("La vérification commence quand tu cliques sur le bouton.")
-                .font(.system(size: 10)).foregroundStyle(.secondary)
-            if model.setupCheckStarted {
-                Button(model.refreshing ? "Vérification en cours…" : "Vérifier à nouveau") { model.checkSetup() }
-                    .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).disabled(model.refreshing)
-                Text("Tu peux utiliser une seule IA. Une connexion ou un réseau indisponible n’empêche pas l’autre de fonctionner.")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
-            }
-        }.fixedSize(horizontal: false, vertical: true)
     }
 
     private var quotas: some View {
@@ -207,7 +147,6 @@ struct Panel: View {
                 Text(model.refreshMode.description).font(.system(size: 10)).foregroundStyle(.secondary)
             }
             settingsSection("IA SUIVIES") {
-                Button("Vérifier les connexions…") { model.showSetup() }.buttonStyle(.plain).foregroundStyle(.secondary)
                 ForEach(Provider.allCases, id: \.self) { provider in
                     HStack(spacing: 8) {
                         let ink = Brand.ink(provider, dark: colorScheme == .dark)

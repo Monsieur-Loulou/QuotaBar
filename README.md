@@ -2,11 +2,11 @@
 
 Une app macOS volontairement réduite à l’essentiel : suivre ses quotas OpenAI et Claude et ajuster son rythme de consommation. QuotaBar lit les quotas elle-même, à la source officielle de chaque fournisseur, avec une interface native compacte.
 
-Le code de QuotaBar est sous [licence MIT](LICENSE). Les deux logos conservent leur [licence et attribution propres](Sources/QuotaBar/Resources/CodexBar-LICENSE.txt).
+Le code de QuotaBar est sous [licence MIT](LICENSE). Les logos OpenAI et Claude sont des marques de leurs propriétaires.
 
 QuotaBar affiche les logos OpenAI et Claude avec leur quota hebdomadaire restant dans la barre de menu macOS. Un clic ouvre un panneau compact aux couleurs des fournisseurs, sans barres de progression, avec les limites disponibles et le jour et l’heure locale de remise à zéro. Le nom de chaque limite, sa date de reset et son pourcentage partagent une ligne ; le rythme de consommation apparaît juste dessous. L’adresse du compte est alignée à droite du fournisseur. La fenêtre adapte sa hauteur au contenu, y compris lorsque les réglages ou les données changent. Le défilement n’est utilisé que si le contenu dépasse la hauteur disponible de l’écran. Les réglages permettent d’afficher les pourcentages restants ou consommés, dans le panneau et dans la barre de menu.
 
-Au premier lancement, un écran explique les connexions utilisées. La lecture commence uniquement après un clic sur « Vérifier les connexions ». « Plus tard » laisse l’app en attente ; un clic sur son icône rouvre cet écran. Après cette étape, l’app effectue une lecture au lancement. Les réglages proposent ensuite à l’ouverture du panneau, ou toutes les 1, 5, 15 ou 30 minutes avec lecture à l’ouverture. Le choix est conservé ; 15 minutes reste le réglage initial. Les réglages permettent aussi d’activer ou désactiver OpenAI et Claude. Seuls les fournisseurs sélectionnés sont interrogés ; seuls ceux dont un quota récent est disponible apparaissent dans la barre de menu. Une icône QuotaBar donne accès aux réglages lorsqu’aucun quota n’est disponible. Une ouverture pendant une lecture en cours réutilise cette lecture. Chaque refresh repousse le prochain refresh automatique de l’intervalle choisi. Pendant la veille, l’app annule la lecture et suspend son minuteur. Au réveil, un mode périodique effectue au plus une lecture due ou interrompue ; le mode à l’ouverture attend son déclencheur explicite.
+L’app effectue une lecture au lancement. Les réglages proposent ensuite à l’ouverture du panneau, ou toutes les 1, 5, 15 ou 30 minutes avec lecture à l’ouverture. Le choix est conservé ; 15 minutes reste le réglage initial. Les réglages permettent aussi d’activer ou désactiver OpenAI et Claude. Seuls les fournisseurs sélectionnés sont interrogés ; seuls ceux dont un quota récent est disponible apparaissent dans la barre de menu. Une icône QuotaBar donne accès aux réglages lorsqu’aucun quota n’est disponible. Une ouverture pendant une lecture en cours réutilise cette lecture. Chaque refresh repousse le prochain refresh automatique de l’intervalle choisi. Pendant la veille, l’app annule la lecture et suspend son minuteur. Au réveil, un mode périodique effectue au plus une lecture due ou interrompue ; le mode à l’ouverture attend son déclencheur explicite.
 
 Les valeurs expirent après 16 minutes, ou 31 minutes avec la fréquence de 30 minutes, et au reset de la fenêtre hebdomadaire. Un événement local masque les anciennes valeurs dans la barre, même en mode à l’ouverture, sans déclencher de lecture réseau. Une erreur sur un fournisseur n’empêche pas l’autre de fonctionner. Le panneau affiche une erreur et peut conserver une dernière lecture atténuée ; une connexion absente ou expirée a son propre message.
 
@@ -14,7 +14,7 @@ Les valeurs expirent après 16 minutes, ou 31 minutes avec la fréquence de 30 m
 
 QuotaBar fonctionne sur macOS 14 ou plus récent, sur Mac Intel et Apple Silicon. Les paquets de distribution sont un `.dmg` à ouvrir puis à glisser dans Applications, ou un `.zip` contenant `QuotaBar.app`. Aucune compilation ni autre app de quotas n’est nécessaire.
 
-Le premier écran permet de vérifier les connexions, puis d’utiliser l’app même si une seule IA est disponible. La vérification peut aussi être relancée depuis les réglages. Il faut :
+QuotaBar fonctionne même si une seule IA est disponible. Il faut :
 
 - pour OpenAI, Codex connecté sur ce Mac (il est inclus dans l’app ChatGPT). Une connexion au site ChatGPT seule ne suffit pas ;
 - pour Claude, Claude Code connecté sur ce Mac. Une connexion au site claude.ai seule ne suffit pas.
@@ -108,4 +108,4 @@ Une évolution des formats ou de l’authentification chez les fournisseurs peut
 
 ## Provenance
 
-Les deux logos proviennent de [CodexBar](https://github.com/steipete/CodexBar/tree/03f4b68881930269793320d68776fd5f4f76d453), commit `03f4b68881930269793320d68776fd5f4f76d453`, sous [licence MIT](Sources/QuotaBar/Resources/CodexBar-LICENSE.txt). Le reste du code de QuotaBar est propre à ce projet.
+Les logos viennent des sites officiels : `openai.com/favicon.svg` et `claude.ai/favicon.svg`, recolorés pour la barre de menu. Tout le code de QuotaBar est propre à ce projet.

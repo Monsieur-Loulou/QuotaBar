@@ -22,7 +22,6 @@ QuotaBar pour macOS 14 ou plus récent, Mac Intel et Apple Silicon.
 
 1. Glisse QuotaBar dans Applications.
 2. Ouvre QuotaBar depuis Applications.
-3. Clique sur Vérifier les connexions au premier lancement.
 
 Codex (inclus dans l'app ChatGPT) et Claude Code doivent être connectés
 sur ce Mac. QuotaBar lit leurs quotas avec ces connexions, sans clé API.

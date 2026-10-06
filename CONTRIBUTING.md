@@ -10,7 +10,7 @@ sh build.sh
 dist/QuotaBar.app/Contents/MacOS/QuotaBar --verify-panel
 ```
 
-Ces contrôles utilisent des données synthétiques et vérifient les ressources embarquées sans lire de compte. Les rendus `--render-demo /tmp/quotabar.png --forecast --light` , `--setup`, `--setup-ready`, `--setup-error` et `--settings` aident à vérifier la mise en page. Une modification de l’interaction avec la barre de menu doit aussi être essayée sur un Mac.
+Ces contrôles utilisent des données synthétiques et vérifient les ressources embarquées sans lire de compte. Les rendus `--render-demo /tmp/quotabar.png --forecast --light` et `--settings` aident à vérifier la mise en page. Une modification de l’interaction avec la barre de menu doit aussi être essayée sur un Mac.
 
 `--check` lit les quotas des comptes connectés. N’enregistrez aucune réponse brute dans un rapport ou un commit.
 
@@ -18,7 +18,7 @@ Ces contrôles utilisent des données synthétiques et vérifient les ressources
 
 Décrivez le comportement changé, les contrôles exécutés et leurs limites. Aucun compte, secret, cookie, jeton, historique local ou capture de compte réel ne doit entrer dans le dépôt. Gardez `.build/` et `dist/` hors de Git.
 
-Le code propre à QuotaBar est sous MIT. Conservez `LICENSE` et `CodexBar-LICENSE.txt`, qui couvre les logos. La signature locale du build ne vaut pas notarisation.
+Le code propre à QuotaBar est sous MIT. Conservez `LICENSE`. La signature locale du build ne vaut pas notarisation.
 
 Pour préparer une distribution sans lire de compte :
 

@@ -169,7 +169,7 @@ final class StatusPanel: NSObject, NSWindowDelegate {
         let panel = StatusPanel()
         // Measure real SwiftUI content, including settings, long data, loading and errors.
         for screen in screens {
-            for scenario in ["normal", "trend", "forecast", "long", "loading", "error", "disconnected", "setup", "setup-ready", "setup-error"] {
+            for scenario in ["normal", "trend", "forecast", "long", "loading", "error", "disconnected"] {
                 let model = AppModel(demo: true, demoScenario: scenario)
                 let anchor = NSRect(x: screen.midX, y: screen.maxY, width: 48, height: 24)
                 panel.configure(model: model, anchor: anchor, visibleFrame: screen)
